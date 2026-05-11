@@ -7,6 +7,7 @@ import customtkinter as ctk
 from views.theme import *
 import controller
 import model
+from tkinter import filedialog, messagebox
 
 COLUMNS = ["Mã BN", "Họ tên", "Tuổi", "Giới tính", "Cao (cm)", "Nặng (kg)", "Huyết áp", "BMI", "Loại bệnh"]
 COL_WIDTHS = [80, 160, 50, 80, 70, 70, 90, 70, 110]
@@ -101,6 +102,49 @@ def make_list_page(parent):
         fg_color=DANGER, hover_color="#DC2626",
         text_color="white", corner_radius=RADIUS_MD,
         command=_delete,
+    ).pack(side="left", pady=PAD_SM)
+
+    def _export_csv():
+        file = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile="benh_nhan_export.csv"
+        )
+        if file:
+            ok, msg = controller.handle_export_csv(file)
+            if ok:
+                status_var.set(f"✅  {msg}")
+            else:
+                messagebox.showerror("Lỗi", msg)
+
+    def _import_csv():
+        file = filedialog.askopenfilename(
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if file:
+            merge = messagebox.askyesno(
+                "Import CSV",
+                "Cập nhật dữ liệu đã tồn tại?\n\n"
+                "Chọn 'Yes' nếu muốn cập nhật bệnh nhân trùng mã.\n"
+                "Chọn 'No' nếu chỉ thêm bệnh nhân mới."
+            )
+            ok, msg = controller.handle_import_csv(file, merge=merge, on_success=refresh)
+            messagebox.showinfo("Kết quả Import", msg if ok else f"Lỗi: {msg}")
+            if ok:
+                refresh()
+
+    ctk.CTkButton(
+        action_bar, text="📥  Import CSV", font=FONT_BODY, height=36, width=140,
+        fg_color=SECONDARY, hover_color="#6366F1",
+        text_color="white", corner_radius=RADIUS_MD,
+        command=_import_csv,
+    ).pack(side="left", padx=PAD_SM, pady=PAD_SM)
+
+    ctk.CTkButton(
+        action_bar, text="📤  Export CSV", font=FONT_BODY, height=36, width=140,
+        fg_color=INFO, hover_color="#0EA5E9",
+        text_color="white", corner_radius=RADIUS_MD,
+        command=_export_csv,
     ).pack(side="left", pady=PAD_SM)
 
     count_lbl = ctk.CTkLabel(action_bar, text="", font=FONT_SMALL, text_color=TEXT_MUTED)

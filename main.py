@@ -15,6 +15,7 @@ from views.sidebar import make_sidebar
 from views.page_input import make_input_page
 from views.page_list import make_list_page
 from views.page_stats import make_stats_page
+from views.page_about import make_about_page
 import controller
 
 
@@ -67,6 +68,11 @@ def build_app():
 
         elif key == "stats":
             frame, refresh = make_stats_page(content_area)
+            pages[key] = frame
+            refresh_fns[key] = refresh
+
+        elif key == "about":
+            frame, refresh = make_about_page(content_area)
             pages[key] = frame
             refresh_fns[key] = refresh
 

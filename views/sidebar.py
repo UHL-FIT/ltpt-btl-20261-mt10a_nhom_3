@@ -10,6 +10,7 @@ NAV_ITEMS = [
     ("➕", "Nhập liệu",  "input"),
     ("📋", "Danh sách", "list"),
     ("📊", "Thống kê",  "stats"),
+    ("ℹ️", "Về ứng dụng", "about"),
 ]
 
 

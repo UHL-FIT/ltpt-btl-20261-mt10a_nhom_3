@@ -98,6 +98,23 @@ def get_summary_stats() -> dict:
     return model.summary_stats(df)
 
 
+# ──────────────────────────────────────────────
+# IMPORT/EXPORT
+# ──────────────────────────────────────────────
+
+def handle_export_csv(filepath: str) -> tuple[bool, str]:
+    """Export all patients to CSV."""
+    return model.export_to_csv(filepath)
+
+
+def handle_import_csv(filepath: str, merge: bool = False, on_success=None) -> tuple[bool, str]:
+    """Import patients from CSV."""
+    ok, msg = model.import_from_csv(filepath, merge=merge)
+    if ok and on_success:
+        on_success()
+    return ok, msg
+
+
 def compute_bmi_preview(can_nang: str, chieu_cao: str) -> str:
     """
     Real-time BMI preview for the input form.

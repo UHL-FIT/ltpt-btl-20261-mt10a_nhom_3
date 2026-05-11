@@ -309,3 +309,107 @@ def summary_stats(df: pd.DataFrame) -> dict:
         "nam": int((df["gioi_tinh"] == "Nam").sum()),
         "nu": int((df["gioi_tinh"] == "Nữ").sum()),
     }
+
+
+# ──────────────────────────────────────────────
+# IMPORT/EXPORT CSV
+# ──────────────────────────────────────────────
+
+def export_to_csv(filepath: str) -> tuple[bool, str]:
+    """Export all patients to CSV file."""
+    try:
+        df = get_all_patients()
+        if df.empty:
+            return False, "Không có dữ liệu để xuất."
+        # Column order
+        columns = ["ma_bn", "ten", "tuoi", "gioi_tinh", "chieu_cao", "can_nang", 
+                   "huyet_ap", "lich_su_kham", "loai_benh", "lich_su_thuoc", "ngay_tao"]
+        df = df[columns]
+        # Vietnamese column names for CSV header
+        df.columns = ["Mã BN", "Tên", "Tuổi", "Giới tính", "Chiều cao (cm)", "Cân nặng (kg)", 
+                      "Huyết áp", "Lịch sử khám", "Loại bệnh", "Lịch sử thuốc", "Ngày tạo"]
+        df.to_csv(filepath, index=False, encoding="utf-8-sig")
+        return True, f"Đã xuất {len(df)} bệnh nhân ra file: {filepath}"
+    except Exception as e:
+        return False, f"Lỗi xuất CSV: {str(e)}"
+
+
+def import_from_csv(filepath: str, merge: bool = False) -> tuple[bool, str]:
+    """
+    Import patients from CSV file.
+    If merge=True: update existing records, add new ones.
+    If merge=False: skip existing records.
+    """
+    try:
+        df = pd.read_csv(filepath, encoding="utf-8-sig")
+        
+        # Normalize column names to English
+        column_mapping = {
+            "Mã BN": "ma_bn", "mã_bn": "ma_bn", "ma bn": "ma_bn",
+            "Tên": "ten", "tên": "ten",
+            "Tuổi": "tuoi", "tuổi": "tuoi",
+            "Giới tính": "gioi_tinh", "giới_tính": "gioi_tinh", "gioi tinh": "gioi_tinh",
+            "Chiều cao (cm)": "chieu_cao", "chiều_cao": "chieu_cao", "chieu cao": "chieu_cao",
+            "Cân nặng (kg)": "can_nang", "cân_nặng": "can_nang", "can nang": "can_nang",
+            "Huyết áp": "huyet_ap", "huyết_áp": "huyet_ap", "huyet ap": "huyet_ap",
+            "Lịch sử khám": "lich_su_kham", "lịch_sử_khám": "lich_su_kham", "lich su kham": "lich_su_kham",
+            "Loại bệnh": "loai_benh", "loại_bệnh": "loai_benh", "loai benh": "loai_benh",
+            "Lịch sử thuốc": "lich_su_thuoc", "lịch_sử_thuốc": "lich_su_thuoc", "lich su thuoc": "lich_su_thuoc",
+            "Ngày tạo": "ngay_tao", "ngày_tạo": "ngay_tao", "ngay tao": "ngay_tao",
+        }
+        
+        df.rename(columns=column_mapping, inplace=True)
+        
+        # Required columns
+        required = ["ma_bn", "ten", "tuoi", "gioi_tinh", "chieu_cao", "can_nang"]
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            return False, f"Thiếu cột bắt buộc: {', '.join(missing)}"
+        
+        # Convert types
+        df["tuoi"] = pd.to_numeric(df["tuoi"], errors="coerce").astype("Int64")
+        df["chieu_cao"] = pd.to_numeric(df["chieu_cao"], errors="coerce").astype("float")
+        df["can_nang"] = pd.to_numeric(df["can_nang"], errors="coerce").astype("float")
+        
+        added = 0
+        updated = 0
+        errors = []
+        
+        for idx, row in df.iterrows():
+            row_data = row.to_dict()
+            row_data = {k: (v if pd.notna(v) else "") for k, v in row_data.items()}
+            
+            # Validate
+            validation_errors = validate_patient(row_data)
+            if validation_errors:
+                errors.append(f"Dòng {idx+2}: {'; '.join(validation_errors)}")
+                continue
+            
+            ma_bn = row_data["ma_bn"]
+            
+            # Check if exists
+            with get_connection() as conn:
+                existing = conn.execute("SELECT 1 FROM patients WHERE ma_bn=?", (ma_bn,)).fetchone()
+            
+            if existing:
+                if merge:
+                    ok, msg = update_patient(ma_bn, row_data)
+                    if ok:
+                        updated += 1
+                    else:
+                        errors.append(f"Dòng {idx+2}: Cập nhật thất bại - {msg}")
+            else:
+                ok, msg = add_patient(row_data)
+                if ok:
+                    added += 1
+                else:
+                    errors.append(f"Dòng {idx+2}: Thêm thất bại - {msg}")
+        
+        summary = f"Đã thêm: {added}, Cập nhật: {updated}"
+        if errors:
+            summary += f"\nLỗi: {len(errors)}\n" + "\n".join(errors[:5])
+            return True, summary
+        
+        return True, summary
+    except Exception as e:
+        return False, f"Lỗi nhập CSV: {str(e)}"
