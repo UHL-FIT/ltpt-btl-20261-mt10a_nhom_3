@@ -104,6 +104,8 @@ def make_about_page(parent):
         "📊 Thống kê và phân tích dữ liệu",
         "🌓 Chuyển đổi giao diện sáng/tối",
         "💾 Lưu trữ dữ liệu trên cơ sở dữ liệu SQLite",
+        "🔍 Tìm kiếm bệnh nhân theo tên hoặc mã bệnh nhân",
+        "💾 Import/Export dữ liệu",
     ]
 
     for feature in features:

@@ -31,16 +31,152 @@ def make_list_page(parent):
     ctk.CTkLabel(hdr_inner, text="Danh sách bệnh nhân", font=FONT_TITLE,
                  text_color=TEXT_PRIMARY).pack(side="left")
 
+    # ── Filter bar (right side) ───────────────────────────────────────────────
+    filter_frame = ctk.CTkFrame(hdr_inner, fg_color="transparent")
+    filter_frame.pack(side="right")
+
+    # Disease filter dropdown
+    disease_filter_var = ctk.StringVar(value="Tất cả")
+    disease_options = ["Tất cả", "Tim mạch", "Tiểu đường", "Hô hấp", "Tiêu hóa",
+                       "Thần kinh", "Xương khớp", "Da liễu", "Khác"]
+    
+    ctk.CTkLabel(filter_frame, text="Loại bệnh:", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    disease_combo = ctk.CTkOptionMenu(
+        filter_frame, values=disease_options, variable=disease_filter_var,
+        font=FONT_BODY, height=38, width=140,
+        fg_color=INPUT_BG, button_color=PRIMARY, button_hover_color=PRIMARY_HOVER,
+        text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM,
+    )
+    disease_combo.pack(side="left", padx=(0, PAD_SM))
+
     # Search bar
     search_var = ctk.StringVar()
     search_entry = ctk.CTkEntry(
-        hdr_inner, textvariable=search_var,
-        placeholder_text="🔍  Tìm theo tên hoặc mã BN...",
-        font=FONT_BODY, width=280, height=38,
+        filter_frame, textvariable=search_var,
+        font=FONT_BODY, width=200, height=38,
         fg_color=INPUT_BG, border_color=INPUT_BORDER,
         text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM,
     )
-    search_entry.pack(side="right")
+    search_entry.pack(side="left", padx=(0, PAD_SM))
+    
+    # Add hint label overlay
+    ctk.CTkLabel(filter_frame, text="🔍  Tìm", font=FONT_BODY, text_color=TEXT_MUTED).pack(side="left", padx=(4, 0))
+
+    # Advanced filter toggle button
+    filter_panel_state = {"show": False}
+    
+    def _toggle_filter_panel():
+        filter_panel_state["show"] = not filter_panel_state["show"]
+        if filter_panel_state["show"]:
+            filter_panel.pack(fill="x", padx=PAD_LG, pady=(0, PAD_SM), after=hdr)
+            toggle_btn.configure(text="🔽 Ẩn bộ lọc")
+        else:
+            filter_panel.pack_forget()
+            toggle_btn.configure(text="▶ Hiện bộ lọc")
+
+    toggle_btn = ctk.CTkButton(
+        filter_frame, text="▶ Hiện bộ lọc", font=FONT_SMALL, height=38, width=120,
+        fg_color=CARD_BG, hover_color=SIDEBAR_HOVER, text_color=TEXT_SECONDARY,
+        corner_radius=RADIUS_MD, command=_toggle_filter_panel,
+    )
+    toggle_btn.pack(side="left", padx=(PAD_SM, 0))
+
+    # ── Advanced Filter Panel ────────────────────────────────────────────────
+    filter_panel = ctk.CTkFrame(outer, fg_color=CARD_BG, corner_radius=RADIUS_MD)
+    
+    filter_inner = ctk.CTkFrame(filter_panel, fg_color="transparent")
+    filter_inner.pack(fill="x", padx=PAD, pady=PAD)
+
+    # Age group filter
+    age_filter_var = ctk.StringVar(value="Tất cả")
+    age_options = ["Tất cả", "<18", "18-40", "41-60", ">60"]
+    ctk.CTkLabel(filter_inner, text="Tuổi:", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    age_combo = ctk.CTkOptionMenu(
+        filter_inner, values=age_options, variable=age_filter_var,
+        font=FONT_BODY, height=36, width=110,
+        fg_color=INPUT_BG, button_color=PRIMARY, button_hover_color=PRIMARY_HOVER,
+        text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM,
+    )
+    age_combo.pack(side="left", padx=(0, PAD_LG))
+
+    # Gender filter
+    gender_filter_var = ctk.StringVar(value="Tất cả")
+    gender_options = ["Tất cả", "Nam", "Nữ", "Khác"]
+    ctk.CTkLabel(filter_inner, text="Giới tính:", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    gender_combo = ctk.CTkOptionMenu(
+        filter_inner, values=gender_options, variable=gender_filter_var,
+        font=FONT_BODY, height=36, width=110,
+        fg_color=INPUT_BG, button_color=PRIMARY, button_hover_color=PRIMARY_HOVER,
+        text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM,
+    )
+    gender_combo.pack(side="left", padx=(0, PAD_LG))
+
+    # BMI filter
+    bmi_filter_var = ctk.StringVar(value="Tất cả")
+    bmi_options = ["Tất cả", "Thiếu cân", "Bình thường", "Thừa cân", "Béo phì"]
+    ctk.CTkLabel(filter_inner, text="BMI:", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    bmi_combo = ctk.CTkOptionMenu(
+        filter_inner, values=bmi_options, variable=bmi_filter_var,
+        font=FONT_BODY, height=36, width=130,
+        fg_color=INPUT_BG, button_color=PRIMARY, button_hover_color=PRIMARY_HOVER,
+        text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM,
+    )
+    bmi_combo.pack(side="left", padx=(0, PAD_LG))
+
+    # Weight range (kg)
+    ctk.CTkLabel(filter_inner, text="Cân nặng (kg):", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    weight_min_entry = ctk.CTkEntry(
+        filter_inner, font=FONT_SMALL, width=60, height=36,
+        fg_color=INPUT_BG, border_color=INPUT_BORDER, text_color=TEXT_PRIMARY,
+        corner_radius=RADIUS_SM, placeholder_text="Min",
+    )
+    weight_min_entry.pack(side="left", padx=(0, PAD_SM))
+    
+    ctk.CTkLabel(filter_inner, text="→", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    
+    weight_max_entry = ctk.CTkEntry(
+        filter_inner, font=FONT_SMALL, width=60, height=36,
+        fg_color=INPUT_BG, border_color=INPUT_BORDER, text_color=TEXT_PRIMARY,
+        corner_radius=RADIUS_SM, placeholder_text="Max",
+    )
+    weight_max_entry.pack(side="left", padx=(0, PAD_LG))
+
+    # Height range (cm)
+    ctk.CTkLabel(filter_inner, text="Chiều cao (cm):", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    height_min_entry = ctk.CTkEntry(
+        filter_inner, font=FONT_SMALL, width=60, height=36,
+        fg_color=INPUT_BG, border_color=INPUT_BORDER, text_color=TEXT_PRIMARY,
+        corner_radius=RADIUS_SM, placeholder_text="Min",
+    )
+    height_min_entry.pack(side="left", padx=(0, PAD_SM))
+    
+    ctk.CTkLabel(filter_inner, text="→", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    
+    height_max_entry = ctk.CTkEntry(
+        filter_inner, font=FONT_SMALL, width=60, height=36,
+        fg_color=INPUT_BG, border_color=INPUT_BORDER, text_color=TEXT_PRIMARY,
+        corner_radius=RADIUS_SM, placeholder_text="Max",
+    )
+    height_max_entry.pack(side="left", padx=(0, PAD_LG))
+
+    # Reset filters button
+    def _reset_filters():
+        disease_filter_var.set("Tất cả")
+        age_filter_var.set("Tất cả")
+        gender_filter_var.set("Tất cả")
+        bmi_filter_var.set("Tất cả")
+        weight_min_entry.delete(0, "end")
+        weight_max_entry.delete(0, "end")
+        height_min_entry.delete(0, "end")
+        height_max_entry.delete(0, "end")
+        search_var.set("")
+
+    reset_btn = ctk.CTkButton(
+        filter_inner, text="↻ Đặt lại", font=FONT_SMALL, height=36, width=90,
+        fg_color=DANGER, hover_color="#DC2626", text_color="white",
+        corner_radius=RADIUS_MD, command=_reset_filters,
+    )
+    reset_btn.pack(side="left", padx=(PAD_LG, 0))
 
     # ── Status bar ───────────────────────────────────────────────────────────
     status_var = ctk.StringVar(value="")
@@ -212,11 +348,66 @@ def make_list_page(parent):
 
     def refresh():
         kw = search_var.get()
+        disease = disease_filter_var.get()
+        age_group = age_filter_var.get()
+        gender = gender_filter_var.get()
+        bmi_filter = bmi_filter_var.get()
+        
+        # Get search results
         df = controller.handle_search(kw)
+        
+        if not df.empty:
+            # Apply disease filter
+            if disease != "Tất cả":
+                df = df[df["loai_benh"].fillna("") == disease]
+            
+            # Apply gender filter
+            if gender != "Tất cả":
+                df = df[df["gioi_tinh"] == gender]
+            
+            # Apply age group filter
+            if age_group != "Tất cả":
+                df["age_grp"] = df["tuoi"].astype(int).apply(model.classify_age_group)
+                df = df[df["age_grp"] == age_group]
+                df = df.drop("age_grp", axis=1)
+            
+            # Apply BMI filter
+            if bmi_filter != "Tất cả":
+                bmi_df = model.bmi_distribution(df)
+                if not bmi_df.empty:
+                    valid_ma = bmi_df[bmi_df["phan_loai_bmi"] == bmi_filter]["ma_bn"].values
+                    df = df[df["ma_bn"].isin(valid_ma)]
+            
+            # Apply weight range filter
+            try:
+                w_min = float(weight_min_entry.get()) if weight_min_entry.get() else 0
+                w_max = float(weight_max_entry.get()) if weight_max_entry.get() else float('inf')
+                df = df[(df["can_nang"].astype(float) >= w_min) & (df["can_nang"].astype(float) <= w_max)]
+            except ValueError:
+                pass
+            
+            # Apply height range filter
+            try:
+                h_min = float(height_min_entry.get()) if height_min_entry.get() else 0
+                h_max = float(height_max_entry.get()) if height_max_entry.get() else float('inf')
+                df = df[(df["chieu_cao"].astype(float) >= h_min) & (df["chieu_cao"].astype(float) <= h_max)]
+            except ValueError:
+                pass
+        
+        df = df.reset_index(drop=True)
         _render_rows(df)
         count_lbl.configure(text=f"{len(df)} bệnh nhân")
 
+    # Trigger refresh on any filter change
     search_var.trace_add("write", lambda *_: refresh())
+    disease_filter_var.trace_add("write", lambda *_: refresh())
+    age_filter_var.trace_add("write", lambda *_: refresh())
+    gender_filter_var.trace_add("write", lambda *_: refresh())
+    bmi_filter_var.trace_add("write", lambda *_: refresh())
+    weight_min_entry.bind("<KeyRelease>", lambda *_: refresh())
+    weight_max_entry.bind("<KeyRelease>", lambda *_: refresh())
+    height_min_entry.bind("<KeyRelease>", lambda *_: refresh())
+    height_max_entry.bind("<KeyRelease>", lambda *_: refresh())
 
     refresh()
     return outer, refresh
