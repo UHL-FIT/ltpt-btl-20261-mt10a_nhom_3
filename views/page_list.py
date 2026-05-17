@@ -123,6 +123,18 @@ def make_list_page(parent):
     )
     bmi_combo.pack(side="left", padx=(0, PAD_LG))
 
+    # Apply Blood Pressure filter (Huyết áp)
+    bp_filter_var = ctk.StringVar(value="Tất cả")
+    bp_options = ["Tất cả", "Bình thường", "Cao huyết áp", "Huyết áp thấp"]
+    ctk.CTkLabel(filter_inner, text="Huyết áp:", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
+    bp_combo = ctk.CTkOptionMenu(
+        filter_inner, values=bp_options, variable=bp_filter_var,
+        font=FONT_BODY, height=36, width=130,
+        fg_color=INPUT_BG, button_color=PRIMARY, button_hover_color=PRIMARY_HOVER,
+        text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM,
+    )
+    bp_combo.pack(side="left", padx=(0, PAD_LG))
+
     # Weight range (kg)
     ctk.CTkLabel(filter_inner, text="Cân nặng (kg):", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
     weight_min_entry = ctk.CTkEntry(
@@ -165,6 +177,7 @@ def make_list_page(parent):
         age_filter_var.set("Tất cả")
         gender_filter_var.set("Tất cả")
         bmi_filter_var.set("Tất cả")
+        bp_filter_var.set("Tất cả")
         weight_min_entry.delete(0, "end")
         weight_max_entry.delete(0, "end")
         height_min_entry.delete(0, "end")
@@ -352,14 +365,22 @@ def make_list_page(parent):
         age_group = age_filter_var.get()
         gender = gender_filter_var.get()
         bmi_filter = bmi_filter_var.get()
+        bp_filter = bp_filter_var.get()
         
-        # Get search results
+        # Get search results with diseases
         df = controller.handle_search(kw)
+        if not df.empty and "loai_benh" not in df.columns:
+            # Add loai_benh column if not present
+            diseases_list = []
+            for ma_bn in df["ma_bn"]:
+                diseases = controller.get_patient_diseases(ma_bn)
+                diseases_list.append(", ".join(diseases) if diseases else "")
+            df["loai_benh"] = diseases_list
         
         if not df.empty:
             # Apply disease filter
             if disease != "Tất cả":
-                df = df[df["loai_benh"].fillna("") == disease]
+                df = df[df["loai_benh"].str.contains(disease, na=False)]
             
             # Apply gender filter
             if gender != "Tất cả":
@@ -377,6 +398,26 @@ def make_list_page(parent):
                 if not bmi_df.empty:
                     valid_ma = bmi_df[bmi_df["phan_loai_bmi"] == bmi_filter]["ma_bn"].values
                     df = df[df["ma_bn"].isin(valid_ma)]
+
+            # Apply Blood Pressure filter
+            if bp_filter != "Tất cả":
+                def _classify_bp(bp_str):
+                    try:
+                        # Tách lấy chỉ số tâm thu (ví dụ "130" từ "130/85")
+                        sys_val = int(str(bp_str).split('/')[0])
+                        if sys_val < 90: 
+                            return "Huyết áp thấp"
+                        elif sys_val >= 130: 
+                            return "Cao huyết áp"
+                        else: 
+                            return "Bình thường"
+                    except:
+                        return "Không rõ"
+                
+                # Tạo cột tạm thời để phân loại, lọc, rồi xóa cột đó đi
+                df["bp_grp"] = df["huyet_ap"].apply(_classify_bp)
+                df = df[df["bp_grp"] == bp_filter]
+                df = df.drop("bp_grp", axis=1)
             
             # Apply weight range filter
             try:
@@ -408,6 +449,7 @@ def make_list_page(parent):
     weight_max_entry.bind("<KeyRelease>", lambda *_: refresh())
     height_min_entry.bind("<KeyRelease>", lambda *_: refresh())
     height_max_entry.bind("<KeyRelease>", lambda *_: refresh())
+    bp_filter_var.trace_add("write", lambda *_: refresh())
 
     refresh()
     return outer, refresh
@@ -424,10 +466,13 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
     if row.empty:
         return
     patient = row.iloc[0].to_dict()
+    
+    # Get current diseases for this patient
+    current_diseases = controller.get_patient_diseases(ma_bn)
 
     dialog = ctk.CTkToplevel(parent)
     dialog.title(f"Sửa hồ sơ – {ma_bn}")
-    dialog.geometry("540x620")
+    dialog.geometry("540x700")
     dialog.resizable(False, False)
     dialog.grab_set()
     dialog.configure(fg_color=CONTENT_BG)
@@ -442,10 +487,11 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
         "ten": "Họ và tên", "tuoi": "Tuổi",
         "gioi_tinh": "Giới tính", "chieu_cao": "Chiều cao (cm)",
         "can_nang": "Cân nặng (kg)", "huyet_ap": "Huyết áp",
-        "loai_benh": "Loại bệnh", "lich_su_kham": "Lịch sử khám",
+        "lich_su_kham": "Lịch sử khám",
         "lich_su_thuoc": "Lịch sử thuốc",
     }
     widgets = {}
+    disease_vars = {}
 
     for key, label in fields.items():
         ctk.CTkLabel(scroll, text=label, font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w").pack(anchor="w", pady=(6, 1))
@@ -462,15 +508,6 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
             opt.set(str(patient.get(key, "Khác")))
             opt.pack(fill="x")
             widgets[key] = opt
-        elif key == "loai_benh":
-            opt = ctk.CTkOptionMenu(scroll, values=["Tim mạch", "Tiểu đường", "Hô hấp", "Tiêu hóa",
-                                                    "Thần kinh", "Xương khớp", "Da liễu", "Khác"], 
-                                    font=FONT_BODY, fg_color=INPUT_BG, button_color=PRIMARY, 
-                                    button_hover_color=PRIMARY_HOVER, text_color=TEXT_PRIMARY, 
-                                    corner_radius=RADIUS_SM, height=36)
-            opt.set(str(patient.get(key, "Khác")))
-            opt.pack(fill="x")
-            widgets[key] = opt
         else:
             e = ctk.CTkEntry(scroll, font=FONT_BODY, fg_color=INPUT_BG,
                              border_color=INPUT_BORDER, text_color=TEXT_PRIMARY,
@@ -478,6 +515,22 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
             e.insert(0, str(patient.get(key, "")))
             e.pack(fill="x")
             widgets[key] = e
+    
+    # Disease checkboxes
+    ctk.CTkLabel(scroll, text="Loại bệnh", font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w").pack(anchor="w", pady=(12, 6))
+    disease_frame = ctk.CTkFrame(scroll, fg_color=INPUT_BG, border_width=1, 
+                                 border_color=INPUT_BORDER, corner_radius=RADIUS_SM)
+    disease_frame.pack(fill="x")
+    
+    all_diseases = controller.get_all_diseases()
+    for disease in all_diseases:
+        var = ctk.BooleanVar(value=(disease in current_diseases))
+        disease_vars[disease] = var
+        checkbox = ctk.CTkCheckBox(disease_frame, text=disease, variable=var,
+                                   font=FONT_BODY, text_color=TEXT_PRIMARY,
+                                   fg_color=PRIMARY, border_color=INPUT_BORDER,
+                                   hover_color=PRIMARY_HOVER, checkmark_color="white")
+        checkbox.pack(anchor="w", padx=PAD_SM, pady=4)
 
     status_var = ctk.StringVar()
     ctk.CTkLabel(dialog, textvariable=status_var, font=FONT_SMALL, text_color=DANGER).pack()
@@ -486,6 +539,10 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
         def _get(w):
             return w.get("0.0", "end").strip() if isinstance(w, ctk.CTkTextbox) else w.get()
         data = {k: _get(v) for k, v in widgets.items()}
+        # Add selected diseases
+        selected_diseases = [disease for disease, var in disease_vars.items() if var.get()]
+        data["loai_benh"] = selected_diseases
+        
         ok, msg = controller.handle_update_patient(ma_bn, data, on_success=on_saved)
         if ok:
             dialog.destroy()

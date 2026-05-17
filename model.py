@@ -4,6 +4,7 @@ Uses pandas for analysis and SQLite for persistence.
 """
 
 import os
+import re
 import sqlite3
 import pandas as pd
 from datetime import datetime
@@ -35,13 +36,41 @@ def init_db() -> None:
         can_nang    REAL NOT NULL,
         huyet_ap    TEXT NOT NULL,
         lich_su_kham TEXT,
-        loai_benh   TEXT,
         lich_su_thuoc TEXT,
         ngay_tao    TEXT
+    );
+    
+    CREATE TABLE IF NOT EXISTS diseases (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        ten         TEXT NOT NULL UNIQUE
+    );
+    
+    CREATE TABLE IF NOT EXISTS patient_diseases (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        ma_bn       TEXT NOT NULL,
+        disease_id  INTEGER NOT NULL,
+        FOREIGN KEY (ma_bn) REFERENCES patients(ma_bn) ON DELETE CASCADE,
+        FOREIGN KEY (disease_id) REFERENCES diseases(id),
+        UNIQUE(ma_bn, disease_id)
     )
     """
     with get_connection() as conn:
-        conn.execute(sql)
+        # Split multiple statements
+        for statement in sql.split(';'):
+            if statement.strip():
+                conn.execute(statement.strip())
+        conn.commit()
+        
+        # Insert default diseases if not exist
+        default_diseases = [
+            "Tim mạch", "Tiểu đường", "Hô hấp", "Tiêu hóa",
+            "Thần kinh", "Xương khớp", "Da liễu", "Khác"
+        ]
+        for disease in default_diseases:
+            conn.execute(
+                "INSERT OR IGNORE INTO diseases (ten) VALUES (?)",
+                (disease,)
+            )
         conn.commit()
 
 
@@ -100,8 +129,11 @@ def validate_patient(data: dict) -> list[str]:
     Empty list means valid.
     """
     errors = []
-    if not data.get("ma_bn", "").strip():
+    ma_bn = str(data.get("ma_bn", "")).strip()
+    if not ma_bn:
         errors.append("Mã bệnh nhân không được để trống.")
+    elif not re.match(r"^BN\d+$", ma_bn):
+        errors.append("Mã bệnh nhân phải bắt đầu bằng BN và theo sau là chữ số, ví dụ: BN0001.")
     try:
         tuoi = int(data.get("tuoi", ""))
         if tuoi <= 0 or tuoi > 150:
@@ -120,9 +152,9 @@ def validate_patient(data: dict) -> list[str]:
             errors.append("Cân nặng phải > 0.")
     except (ValueError, TypeError):
         errors.append("Cân nặng phải là số.")
-    if not data.get("ten", "").strip():
+    if not str(data.get("ten", "")).strip():
         errors.append("Tên bệnh nhân không được để trống.")
-    ha = data.get("huyet_ap", "")
+    ha = str(data.get("huyet_ap", "")).strip()
     if ha and parse_huyet_ap(ha) is None:
         errors.append("Huyết áp phải có định dạng: systolic/diastolic (ví dụ: 120/80).")
     return errors
@@ -139,8 +171,8 @@ def add_patient(data: dict) -> tuple[bool, str]:
         sql = """
         INSERT INTO patients
             (ma_bn, ten, tuoi, gioi_tinh, chieu_cao, can_nang,
-             huyet_ap, lich_su_kham, loai_benh, lich_su_thuoc, ngay_tao)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+             huyet_ap, lich_su_kham, lich_su_thuoc, ngay_tao)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
         """
         values = (
             data["ma_bn"].strip(),
@@ -151,12 +183,35 @@ def add_patient(data: dict) -> tuple[bool, str]:
             float(data["can_nang"]),
             data.get("huyet_ap", ""),
             data.get("lich_su_kham", ""),
-            data.get("loai_benh", ""),
             data.get("lich_su_thuoc", ""),
             datetime.now().strftime("%Y-%m-%d %H:%M"),
         )
         with get_connection() as conn:
             conn.execute(sql, values)
+            
+            # Add diseases
+            loai_benh_list = data.get("loai_benh", [])
+            if isinstance(loai_benh_list, str):  # Handle single string
+                loai_benh_list = [loai_benh_list] if loai_benh_list else []
+            
+            for disease_name in loai_benh_list:
+                if disease_name.strip():
+                    # Get or create disease
+                    disease_row = conn.execute(
+                        "SELECT id FROM diseases WHERE ten = ?", (disease_name.strip(),)
+                    ).fetchone()
+                    if disease_row:
+                        disease_id = disease_row[0]
+                    else:
+                        conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
+                        disease_id = conn.lastrowid
+                    
+                    # Link patient to disease
+                    conn.execute(
+                        "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
+                        (data["ma_bn"].strip(), disease_id)
+                    )
+            
             conn.commit()
         return True, f"Đã thêm bệnh nhân {data['ten']} (BMI: {bmi})"
     except sqlite3.IntegrityError:
@@ -171,7 +226,7 @@ def update_patient(ma_bn: str, data: dict) -> tuple[bool, str]:
         sql = """
         UPDATE patients SET
             ten=?, tuoi=?, gioi_tinh=?, chieu_cao=?, can_nang=?,
-            huyet_ap=?, lich_su_kham=?, loai_benh=?, lich_su_thuoc=?
+            huyet_ap=?, lich_su_kham=?, lich_su_thuoc=?
         WHERE ma_bn=?
         """
         values = (
@@ -182,12 +237,37 @@ def update_patient(ma_bn: str, data: dict) -> tuple[bool, str]:
             float(data["can_nang"]),
             data.get("huyet_ap", ""),
             data.get("lich_su_kham", ""),
-            data.get("loai_benh", ""),
             data.get("lich_su_thuoc", ""),
             ma_bn,
         )
         with get_connection() as conn:
             conn.execute(sql, values)
+            
+            # Update diseases
+            conn.execute("DELETE FROM patient_diseases WHERE ma_bn=?", (ma_bn,))
+            
+            loai_benh_list = data.get("loai_benh", [])
+            if isinstance(loai_benh_list, str):  # Handle single string
+                loai_benh_list = [loai_benh_list] if loai_benh_list else []
+            
+            for disease_name in loai_benh_list:
+                if disease_name.strip():
+                    # Get or create disease
+                    disease_row = conn.execute(
+                        "SELECT id FROM diseases WHERE ten = ?", (disease_name.strip(),)
+                    ).fetchone()
+                    if disease_row:
+                        disease_id = disease_row[0]
+                    else:
+                        conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
+                        disease_id = conn.lastrowid
+                    
+                    # Link patient to disease
+                    conn.execute(
+                        "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
+                        (ma_bn, disease_id)
+                    )
+            
             conn.commit()
         return True, "Cập nhật thành công!"
     except Exception as e:
@@ -198,6 +278,9 @@ def delete_patient(ma_bn: str) -> tuple[bool, str]:
     """Delete a patient by ID."""
     try:
         with get_connection() as conn:
+            # Delete patient diseases first (cascading)
+            conn.execute("DELETE FROM patient_diseases WHERE ma_bn=?", (ma_bn,))
+            # Delete patient
             conn.execute("DELETE FROM patients WHERE ma_bn=?", (ma_bn,))
             conn.commit()
         return True, f"Đã xoá bệnh nhân '{ma_bn}'."
@@ -215,6 +298,27 @@ def get_all_patients() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def get_patients_with_diseases() -> pd.DataFrame:
+    """Fetch all patients with their diseases as a DataFrame (with loai_benh column)."""
+    try:
+        with get_connection() as conn:
+            df = pd.read_sql_query("SELECT * FROM patients", conn)
+        
+        if df.empty:
+            return df
+        
+        # Add loai_benh column with comma-separated disease names
+        diseases_list = []
+        for ma_bn in df["ma_bn"]:
+            diseases = get_patient_diseases(ma_bn)
+            diseases_list.append(", ".join(diseases) if diseases else "")
+        
+        df["loai_benh"] = diseases_list
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
 def search_patients(keyword: str) -> pd.DataFrame:
     """Search patients by name or ID (case-insensitive)."""
     try:
@@ -225,6 +329,30 @@ def search_patients(keyword: str) -> pd.DataFrame:
         return df
     except Exception:
         return pd.DataFrame()
+
+
+def get_patient_diseases(ma_bn: str) -> list[str]:
+    """Get list of disease names for a patient."""
+    try:
+        with get_connection() as conn:
+            rows = conn.execute("""
+                SELECT d.ten FROM diseases d
+                JOIN patient_diseases pd ON d.id = pd.disease_id
+                WHERE pd.ma_bn = ?
+            """, (ma_bn,)).fetchall()
+        return [row[0] for row in rows]
+    except Exception:
+        return []
+
+
+def get_all_diseases() -> list[str]:
+    """Get list of all disease names."""
+    try:
+        with get_connection() as conn:
+            rows = conn.execute("SELECT ten FROM diseases ORDER BY ten").fetchall()
+        return [row[0] for row in rows]
+    except Exception:
+        return []
 
 
 # ──────────────────────────────────────────────
@@ -264,22 +392,42 @@ def avg_blood_pressure_by_age_group(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def disease_frequency(df: pd.DataFrame) -> pd.DataFrame:
+def disease_frequency(df: pd.DataFrame = None) -> pd.DataFrame:
     """
     Pure: count visit frequency by disease type.
+    If df is provided (legacy), use it. Otherwise, get from database.
     Returns DataFrame with columns [Loại bệnh, Số lượt].
     """
-    if df.empty:
-        return pd.DataFrame(columns=["Loại bệnh", "Số lượt"])
-    result = (
-        df["loai_benh"]
-        .fillna("Không rõ")
-        .replace("", "Không rõ")
-        .value_counts()
-        .reset_index()
-    )
-    result.columns = ["Loại bệnh", "Số lượt"]
-    return result
+    if df is None:
+        # Get from database
+        try:
+            with get_connection() as conn:
+                df = pd.read_sql_query("""
+                    SELECT d.ten, COUNT(pd.ma_bn) as count
+                    FROM diseases d
+                    LEFT JOIN patient_diseases pd ON d.id = pd.disease_id
+                    GROUP BY d.id, d.ten
+                    ORDER BY count DESC
+                """, conn)
+            if df.empty:
+                return pd.DataFrame(columns=["Loại bệnh", "Số lượt"])
+            df.columns = ["Loại bệnh", "Số lượt"]
+            return df
+        except Exception:
+            return pd.DataFrame(columns=["Loại bệnh", "Số lượt"])
+    else:
+        # Legacy: use provided DataFrame (for backward compatibility)
+        if df.empty:
+            return pd.DataFrame(columns=["Loại bệnh", "Số lượt"])
+        result = (
+            df["loai_benh"]
+            .fillna("Không rõ")
+            .replace("", "Không rõ")
+            .value_counts()
+            .reset_index()
+        )
+        result.columns = ["Loại bệnh", "Số lượt"]
+        return result
 
 
 def bmi_distribution(df: pd.DataFrame) -> pd.DataFrame:
@@ -321,13 +469,13 @@ def export_to_csv(filepath: str) -> tuple[bool, str]:
         df = get_all_patients()
         if df.empty:
             return False, "Không có dữ liệu để xuất."
-        # Column order
+        # Column order (without loai_benh)
         columns = ["ma_bn", "ten", "tuoi", "gioi_tinh", "chieu_cao", "can_nang", 
-                   "huyet_ap", "lich_su_kham", "loai_benh", "lich_su_thuoc", "ngay_tao"]
+                   "huyet_ap", "lich_su_kham", "lich_su_thuoc", "ngay_tao"]
         df = df[columns]
         # Vietnamese column names for CSV header
         df.columns = ["Mã BN", "Tên", "Tuổi", "Giới tính", "Chiều cao (cm)", "Cân nặng (kg)", 
-                      "Huyết áp", "Lịch sử khám", "Loại bệnh", "Lịch sử thuốc", "Ngày tạo"]
+                      "Huyết áp", "Lịch sử khám", "Lịch sử thuốc", "Ngày tạo"]
         df.to_csv(filepath, index=False, encoding="utf-8-sig")
         return True, f"Đã xuất {len(df)} bệnh nhân ra file: {filepath}"
     except Exception as e:
@@ -353,7 +501,6 @@ def import_from_csv(filepath: str, merge: bool = False) -> tuple[bool, str]:
             "Cân nặng (kg)": "can_nang", "cân_nặng": "can_nang", "can nang": "can_nang",
             "Huyết áp": "huyet_ap", "huyết_áp": "huyet_ap", "huyet ap": "huyet_ap",
             "Lịch sử khám": "lich_su_kham", "lịch_sử_khám": "lich_su_kham", "lich su kham": "lich_su_kham",
-            "Loại bệnh": "loai_benh", "loại_bệnh": "loai_benh", "loai benh": "loai_benh",
             "Lịch sử thuốc": "lich_su_thuoc", "lịch_sử_thuốc": "lich_su_thuoc", "lich su thuoc": "lich_su_thuoc",
             "Ngày tạo": "ngay_tao", "ngày_tạo": "ngay_tao", "ngay tao": "ngay_tao",
         }

@@ -82,8 +82,7 @@ def get_bp_by_age_group() -> pd.DataFrame:
 
 def get_disease_frequency() -> pd.DataFrame:
     """Visit frequency by disease type."""
-    df = model.get_all_patients()
-    return model.disease_frequency(df)
+    return model.disease_frequency()
 
 
 def get_bmi_distribution() -> pd.DataFrame:
@@ -96,6 +95,34 @@ def get_summary_stats() -> dict:
     """High-level summary statistics."""
     df = model.get_all_patients()
     return model.summary_stats(df)
+
+
+# ──────────────────────────────────────────────
+# UTILITIES
+# ──────────────────────────────────────────────
+
+def compute_bmi_preview(can_nang_str: str, chieu_cao_str: str) -> str:
+    """Real-time BMI calculation for form preview."""
+    try:
+        cn = float(can_nang_str.strip())
+        cc = float(chieu_cao_str.strip())
+        if cn <= 0 or cc <= 0:
+            return ""
+        bmi = model.calculate_bmi(cn, cc)
+        classification = model.classify_bmi(bmi)
+        return f"📊  BMI: {bmi} ({classification})"
+    except (ValueError, TypeError):
+        return ""
+
+
+def get_all_diseases() -> list[str]:
+    """Get all available disease types."""
+    return model.get_all_diseases()
+
+
+def get_patient_diseases(ma_bn: str) -> list[str]:
+    """Get diseases for a specific patient."""
+    return model.get_patient_diseases(ma_bn)
 
 
 # ──────────────────────────────────────────────
@@ -115,21 +142,3 @@ def handle_import_csv(filepath: str, merge: bool = False, on_success=None) -> tu
     return ok, msg
 
 
-def compute_bmi_preview(can_nang: str, chieu_cao: str) -> str:
-    """
-    Real-time BMI preview for the input form.
-    Returns formatted string or empty string on invalid input.
-    """
-    try:
-        bmi = model.calculate_bmi(float(can_nang), float(chieu_cao))
-        label = model.classify_bmi(bmi)
-        return f"BMI: {bmi}  →  {label}"
-    except Exception:
-        return ""
-
-
-def generate_patient_id(prefix: str = "BN") -> str:
-    """Auto-generate a unique patient ID based on current count."""
-    df = model.get_all_patients()
-    next_num = len(df) + 1
-    return f"{prefix}{next_num:04d}"

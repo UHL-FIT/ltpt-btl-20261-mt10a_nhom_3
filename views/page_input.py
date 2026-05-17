@@ -8,10 +8,6 @@ import controller
 
 
 GIOI_TINH_OPTIONS = ["Nam", "Nữ", "Khác"]
-LOAI_BENH_OPTIONS = [
-    "Tim mạch", "Tiểu đường", "Hô hấp", "Tiêu hóa",
-    "Thần kinh", "Xương khớp", "Da liễu", "Khác",
-]
 
 
 def _card(parent, title: str, **kwargs):
@@ -80,10 +76,10 @@ def make_input_page(parent, on_saved):
     card1.pack(fill="x", padx=PAD_LG, pady=(0, PAD))
 
     r1 = _row(card1)
-    _label(r1, "Mã bệnh nhân *", col=0, row=0)
+    _label(r1, "Mã bệnh nhân * (ví dụ: BN0001)", col=0, row=0)
     _label(r1, "Họ và tên *", col=1, row=0)
-    entries["ma_bn"] = _entry(r1, col=0, row=1, placeholder_text="BN0001")
-    entries["ten"]   = _entry(r1, col=1, row=1, placeholder_text="Nguyễn Văn A")
+    entries["ma_bn"] = _entry(r1, col=0, row=1)
+    entries["ten"]   = _entry(r1, col=1, row=1)
 
     r2 = _row(card1)
     _label(r2, "Tuổi *", col=0, row=0)
@@ -95,6 +91,7 @@ def make_input_page(parent, on_saved):
         text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM, height=38,
     )
     entries["gioi_tinh"].grid(row=1, column=1, sticky="ew", padx=(PAD, 0), pady=(0, 4))
+    entries["gioi_tinh"].set(GIOI_TINH_OPTIONS[0])
 
     # ══ Card 2: Chỉ số thể chất ══════════════════════════════════════════════
     card2 = _card(scroll, "⚕️  Chỉ số thể chất")
@@ -122,21 +119,48 @@ def make_input_page(parent, on_saved):
     entries["chieu_cao"].bind("<KeyRelease>", _update_bmi)
 
     r4 = _row(card2)
-    _label(r4, "Huyết áp (mmHg)", col=0, row=0)
+    _label(r4, "Huyết áp (ví dụ: 120/80)", col=0, row=0)
     entries["huyet_ap"] = _entry(r4, col=0, row=1, placeholder_text="120/80")
 
     # ══ Card 3: Hồ sơ y tế ═══════════════════════════════════════════════════
     card3 = _card(scroll, "📄  Hồ sơ y tế")
     card3.pack(fill="x", padx=PAD_LG, pady=(0, PAD))
 
-    r5 = _row(card3)
-    _label(r5, "Loại bệnh", col=0, row=0)
-    entries["loai_benh"] = ctk.CTkOptionMenu(
-        r5, values=LOAI_BENH_OPTIONS, font=FONT_BODY,
-        fg_color=INPUT_BG, button_color=PRIMARY, button_hover_color=PRIMARY_HOVER,
-        text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM, height=38,
-    )
-    entries["loai_benh"].grid(row=1, column=0, sticky="ew", pady=(0, 4))
+    # Disease selection with checkboxes
+    ctk.CTkLabel(card3, text="Loại bệnh", font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w"
+                 ).pack(anchor="w", padx=PAD, pady=(PAD_SM, 4))
+    
+    diseases_var = {}  # Store checkbox variables
+    disease_checkboxes = ctk.CTkFrame(card3, fg_color=INPUT_BG, border_width=1, 
+                                      border_color=INPUT_BORDER, corner_radius=RADIUS_SM)
+    disease_checkboxes.pack(fill="x", padx=PAD, pady=(0, PAD_SM))
+    
+    # Get available diseases and create layout
+    raw_diseases = controller.get_all_diseases()
+    all_diseases = sorted([d for d in raw_diseases if d != "Khác"]) + ["Khác"]
+
+    row_frames = {}
+    for i, disease in enumerate(all_diseases):
+        row_idx = i // 2
+        if row_idx not in row_frames:
+            row_frame = ctk.CTkFrame(disease_checkboxes, fg_color="transparent")
+            row_frame.pack(fill="x", padx=PAD_SM, pady=3)
+            row_frames[row_idx] = row_frame
+        else:
+            row_frame = row_frames[row_idx]
+        
+        var = ctk.BooleanVar()
+        diseases_var[disease] = var
+        
+        # Sử dụng grid hoặc giữ nguyên pack nhưng cần set width cố định cho checkbox
+        checkbox = ctk.CTkCheckBox(row_frame, text=disease, variable=var,
+                                font=FONT_BODY, text_color=TEXT_PRIMARY,
+                                fg_color=PRIMARY, border_color=INPUT_BORDER,
+                                hover_color=PRIMARY_HOVER, checkmark_color="white",
+                                width=150) # Thêm width cố định để cột thẳng hàng
+        checkbox.pack(side="left", padx=(0, PAD))
+    
+    entries["loai_benh"] = diseases_var  # Store for later use
 
     for field, placeholder in [("lich_su_kham", "Ghi chú lịch sử khám..."),
                                 ("lich_su_thuoc", "Ghi chú lịch sử dùng thuốc...")]:
@@ -160,20 +184,32 @@ def make_input_page(parent, on_saved):
                 v = w.get("0.0", "end").strip()
                 return v
             return w.get()
-        return {k: _text(v) for k, v in entries.items()}
+        
+        form_data = {}
+        for k, v in entries.items():
+            if k == "loai_benh":
+                # Handle diseases checkboxes
+                selected_diseases = [disease for disease, var in v.items() if var.get()]
+                form_data[k] = selected_diseases
+            else:
+                form_data[k] = _text(v)
+        return form_data
 
     def _clear(keep_status=False):
         for k, w in entries.items():
-            if isinstance(w, ctk.CTkTextbox):
+            if k == "loai_benh":
+                # Clear disease checkboxes
+                for disease, var in w.items():
+                    var.set(False)
+            elif isinstance(w, ctk.CTkTextbox):
                 w.delete("0.0", "end")
             elif isinstance(w, ctk.CTkEntry):
                 w.delete(0, "end")
+        entries["gioi_tinh"].set(GIOI_TINH_OPTIONS[0])
         bmi_var.set("")
         if not keep_status:
             status_var.set("")
-        # Auto-fill new ID
-        new_id = controller.generate_patient_id()
-        entries["ma_bn"].insert(0, new_id)
+
 
     def _save():
         data = _collect_form()
