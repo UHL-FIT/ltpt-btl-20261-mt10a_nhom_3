@@ -1,0 +1,31 @@
+list những gì đã xây dựng trong hệ thống quản lý bệnh nhân
+-phần nhập liệu
+	+mã bệnh nhân được kiểm soát ở dạng BN{số bệnh nhân}
+	+có nhập họ tên và tuổi
+	+có dropbox chọn giới tính
+	+có chiều cao, cân nặng
+	+huyết áp với định dạng {số/số}
+	+phần chọn bệnh là multiselect
+	+có phần tùy chọn lịch sử khám và lịch sử thuốc(sẽ thay đổi để thành nhập ngày khám)
+-phần danh sách
+	+có phần tìm kiếm theo mã bệnh nhân, tên bệnh nhân
+	+có bộ lọc theo bệnh, độ tuổi, giới tính, huyết áp
+	+bộ lọc cân nặng và chiều cao theo dạng min/max
+	+có nút reset bộ lọc
+	+danh sách được hiển thị dưới dạng bảng với các thuộc tính(mã BN, họ tên, tuổi, giới tính, chiều cao, cân nặng, huyết áp, chỉ số BMI, loại bệnh)
+	+bảng gồm chức năng sửa, xóa, import CSV(phần import được kiểm soát đầu vào để không phá hỏng CSDL) và export CSV
+-bảng thống kê và phân tích
+	+liệt kê những thông tin cơ bản như tổng bệnh nhân, tuổi trung bình, BMI trung bình, số bệnh nhân theo giới tính
+	+có bảng huyết áp trung bình theo nhóm tuổi
+	+có tổng hợp tầng xuất các loại bệnh
+	+có loại phân loại và phân phối chỉ số BMI
+	+có bảng thống kê huyết áp theo nhóm tuổi
+-phần about để giới thiệu ứng dụng và những chức năng mà ứng dụng đang có
+-phần mềm có giao diện sáng tối tùy chỉnh hiện đại
+
+
+những phần muốn xây dựng ở tương lai
+-có xử lý bất đồng bộ giúp hạn chế tình trạng treo
+-thay đổi phần nhập liệu để loại bỏ hoặc tối ưu trường dữ liệu
+-giúp phần thống kê có ý nghĩa hơn là một bảng tổng hợp tĩnh
+-chỉnh sửa scrollbar giúp việc điều chỉnh độ phân giải hệ thống không phá vỡ scrollbar(hiện tại đang bị) 
