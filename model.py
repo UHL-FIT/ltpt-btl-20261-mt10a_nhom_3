@@ -164,8 +164,9 @@ def validate_patient(data: dict) -> list[str]:
 # CRUD OPERATIONS
 # ──────────────────────────────────────────────
 
-def add_patient(data: dict) -> tuple[bool, str]:
+def add_patient(data: dict, conn: sqlite3.Connection | None = None) -> tuple[bool, str]:
     """Insert a new patient. Returns (success, message)."""
+    owns_connection = conn is None
     try:
         bmi = calculate_bmi(float(data["can_nang"]), float(data["chieu_cao"]))
         sql = """
@@ -186,17 +187,38 @@ def add_patient(data: dict) -> tuple[bool, str]:
             data.get("lich_su_thuoc", ""),
             datetime.now().strftime("%Y-%m-%d %H:%M"),
         )
-        with get_connection() as conn:
+
+        if owns_connection:
+            with get_connection() as conn:
+                conn.execute(sql, values)
+                
+                loai_benh_list = data.get("loai_benh", [])
+                if isinstance(loai_benh_list, str):  # Handle single string
+                    loai_benh_list = [loai_benh_list] if loai_benh_list else []
+                
+                for disease_name in loai_benh_list:
+                    if disease_name.strip():
+                        disease_row = conn.execute(
+                            "SELECT id FROM diseases WHERE ten = ?", (disease_name.strip(),)
+                        ).fetchone()
+                        if disease_row:
+                            disease_id = disease_row[0]
+                        else:
+                            conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
+                            disease_id = conn.lastrowid
+                        conn.execute(
+                            "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
+                            (data["ma_bn"].strip(), disease_id)
+                        )
+                conn.commit()
+        else:
             conn.execute(sql, values)
-            
-            # Add diseases
             loai_benh_list = data.get("loai_benh", [])
             if isinstance(loai_benh_list, str):  # Handle single string
                 loai_benh_list = [loai_benh_list] if loai_benh_list else []
             
             for disease_name in loai_benh_list:
                 if disease_name.strip():
-                    # Get or create disease
                     disease_row = conn.execute(
                         "SELECT id FROM diseases WHERE ten = ?", (disease_name.strip(),)
                     ).fetchone()
@@ -205,14 +227,10 @@ def add_patient(data: dict) -> tuple[bool, str]:
                     else:
                         conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
                         disease_id = conn.lastrowid
-                    
-                    # Link patient to disease
                     conn.execute(
                         "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
                         (data["ma_bn"].strip(), disease_id)
                     )
-            
-            conn.commit()
         return True, f"Đã thêm bệnh nhân {data['ten']} (BMI: {bmi})"
     except sqlite3.IntegrityError:
         return False, f"Mã bệnh nhân '{data['ma_bn']}' đã tồn tại!"
@@ -220,8 +238,9 @@ def add_patient(data: dict) -> tuple[bool, str]:
         return False, str(e)
 
 
-def update_patient(ma_bn: str, data: dict) -> tuple[bool, str]:
+def update_patient(ma_bn: str, data: dict, conn: sqlite3.Connection | None = None) -> tuple[bool, str]:
     """Update an existing patient record."""
+    owns_connection = conn is None
     try:
         sql = """
         UPDATE patients SET
@@ -240,19 +259,41 @@ def update_patient(ma_bn: str, data: dict) -> tuple[bool, str]:
             data.get("lich_su_thuoc", ""),
             ma_bn,
         )
-        with get_connection() as conn:
+
+        if owns_connection:
+            with get_connection() as conn:
+                conn.execute(sql, values)
+                
+                conn.execute("DELETE FROM patient_diseases WHERE ma_bn=?", (ma_bn,))
+                
+                loai_benh_list = data.get("loai_benh", [])
+                if isinstance(loai_benh_list, str):  # Handle single string
+                    loai_benh_list = [loai_benh_list] if loai_benh_list else []
+                
+                for disease_name in loai_benh_list:
+                    if disease_name.strip():
+                        disease_row = conn.execute(
+                            "SELECT id FROM diseases WHERE ten = ?", (disease_name.strip(),)
+                        ).fetchone()
+                        if disease_row:
+                            disease_id = disease_row[0]
+                        else:
+                            conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
+                            disease_id = conn.lastrowid
+                        conn.execute(
+                            "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
+                            (ma_bn, disease_id)
+                        )
+                conn.commit()
+        else:
             conn.execute(sql, values)
-            
-            # Update diseases
             conn.execute("DELETE FROM patient_diseases WHERE ma_bn=?", (ma_bn,))
-            
             loai_benh_list = data.get("loai_benh", [])
             if isinstance(loai_benh_list, str):  # Handle single string
                 loai_benh_list = [loai_benh_list] if loai_benh_list else []
             
             for disease_name in loai_benh_list:
                 if disease_name.strip():
-                    # Get or create disease
                     disease_row = conn.execute(
                         "SELECT id FROM diseases WHERE ten = ?", (disease_name.strip(),)
                     ).fetchone()
@@ -261,14 +302,10 @@ def update_patient(ma_bn: str, data: dict) -> tuple[bool, str]:
                     else:
                         conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
                         disease_id = conn.lastrowid
-                    
-                    # Link patient to disease
                     conn.execute(
                         "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
                         (ma_bn, disease_id)
                     )
-            
-            conn.commit()
         return True, "Cập nhật thành công!"
     except Exception as e:
         return False, str(e)
@@ -496,7 +533,7 @@ def import_from_csv(filepath: str, merge: bool = False) -> tuple[bool, str]:
             "Mã BN": "ma_bn", "mã_bn": "ma_bn", "ma bn": "ma_bn",
             "Tên": "ten", "tên": "ten",
             "Tuổi": "tuoi", "tuổi": "tuoi",
-            "Giới tính": "gioi_tinh", "giới_tính": "gioi_tinh", "gioi tinh": "gioi_tinh",
+            "Giới tính": "gioi_tinh", "giới_tính": "gioi_tinh", "giới tinh": "gioi_tinh",
             "Chiều cao (cm)": "chieu_cao", "chiều_cao": "chieu_cao", "chieu cao": "chieu_cao",
             "Cân nặng (kg)": "can_nang", "cân_nặng": "can_nang", "can nang": "can_nang",
             "Huyết áp": "huyet_ap", "huyết_áp": "huyet_ap", "huyet ap": "huyet_ap",
@@ -522,41 +559,42 @@ def import_from_csv(filepath: str, merge: bool = False) -> tuple[bool, str]:
         updated = 0
         errors = []
         
-        for idx, row in df.iterrows():
-            row_data = row.to_dict()
-            row_data = {k: (v if pd.notna(v) else "") for k, v in row_data.items()}
-            
-            # Validate
-            validation_errors = validate_patient(row_data)
-            if validation_errors:
-                errors.append(f"Dòng {idx+2}: {'; '.join(validation_errors)}")
-                continue
-            
-            ma_bn = row_data["ma_bn"]
-            
-            # Check if exists
-            with get_connection() as conn:
+        with get_connection() as conn:
+            conn.execute("BEGIN")
+            for idx, row in df.iterrows():
+                row_data = row.to_dict()
+                row_data = {k: (v if pd.notna(v) else "") for k, v in row_data.items()}
+                
+                # Validate
+                validation_errors = validate_patient(row_data)
+                if validation_errors:
+                    errors.append(f"Dòng {idx+2}: {'; '.join(validation_errors)}")
+                    continue
+                
+                ma_bn = row_data["ma_bn"]
                 existing = conn.execute("SELECT 1 FROM patients WHERE ma_bn=?", (ma_bn,)).fetchone()
-            
-            if existing:
-                if merge:
-                    ok, msg = update_patient(ma_bn, row_data)
-                    if ok:
-                        updated += 1
-                    else:
-                        errors.append(f"Dòng {idx+2}: Cập nhật thất bại - {msg}")
-            else:
-                ok, msg = add_patient(row_data)
-                if ok:
-                    added += 1
+                
+                if existing:
+                    if merge:
+                        ok, msg = update_patient(ma_bn, row_data, conn=conn)
+                        if ok:
+                            updated += 1
+                        else:
+                            errors.append(f"Dòng {idx+2}: Cập nhật thất bại - {msg}")
                 else:
-                    errors.append(f"Dòng {idx+2}: Thêm thất bại - {msg}")
+                    ok, msg = add_patient(row_data, conn=conn)
+                    if ok:
+                        added += 1
+                    else:
+                        errors.append(f"Dòng {idx+2}: Thêm thất bại - {msg}")
+            
+            if errors:
+                conn.rollback()
+                summary = f"Đã thêm: {added}, Cập nhật: {updated}"
+                summary += f"\nLỗi: {len(errors)}\n" + "\n".join(errors[:5])
+                return False, summary
+            conn.commit()
         
-        summary = f"Đã thêm: {added}, Cập nhật: {updated}"
-        if errors:
-            summary += f"\nLỗi: {len(errors)}\n" + "\n".join(errors[:5])
-            return True, summary
-        
-        return True, summary
+        return True, f"Đã thêm: {added}, Cập nhật: {updated}"
     except Exception as e:
         return False, f"Lỗi nhập CSV: {str(e)}"
