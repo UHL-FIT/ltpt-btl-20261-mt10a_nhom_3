@@ -213,8 +213,8 @@ def add_patient(data: dict, conn: sqlite3.Connection | None = None) -> tuple[boo
                         if disease_row:
                             disease_id = disease_row[0]
                         else:
-                            conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
-                            disease_id = conn.lastrowid
+                            cursor = conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
+                            disease_id = cursor.lastrowid
                         conn.execute(
                             "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
                             (data["ma_bn"].strip(), disease_id)
@@ -234,8 +234,8 @@ def add_patient(data: dict, conn: sqlite3.Connection | None = None) -> tuple[boo
                     if disease_row:
                         disease_id = disease_row[0]
                     else:
-                        conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
-                        disease_id = conn.lastrowid
+                        cursor = conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
+                        disease_id = cursor.lastrowid
                     conn.execute(
                         "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
                         (data["ma_bn"].strip(), disease_id)
@@ -287,8 +287,8 @@ def update_patient(ma_bn: str, data: dict, conn: sqlite3.Connection | None = Non
                         if disease_row:
                             disease_id = disease_row[0]
                         else:
-                            conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
-                            disease_id = conn.lastrowid
+                            cursor = conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
+                            disease_id = cursor.lastrowid
                         conn.execute(
                             "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
                             (ma_bn, disease_id)
@@ -309,8 +309,8 @@ def update_patient(ma_bn: str, data: dict, conn: sqlite3.Connection | None = Non
                     if disease_row:
                         disease_id = disease_row[0]
                     else:
-                        conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
-                        disease_id = conn.lastrowid
+                        cursor = conn.execute("INSERT INTO diseases (ten) VALUES (?)", (disease_name.strip(),))
+                        disease_id = cursor.lastrowid
                     conn.execute(
                         "INSERT OR IGNORE INTO patient_diseases (ma_bn, disease_id) VALUES (?, ?)",
                         (ma_bn, disease_id)

@@ -140,6 +140,15 @@ def make_input_page(parent, on_saved):
     all_diseases = sorted([d for d in raw_diseases if d != "Khác"]) + ["Khác"]
 
     row_frames = {}
+    other_disease_var = ctk.StringVar(value="")
+
+    def _toggle_other_input():
+        if diseases_var.get("Khác", ctk.BooleanVar()).get():
+            other_disease_entry.configure(state="normal")
+        else:
+            other_disease_entry.configure(state="disabled")
+            other_disease_var.set("")
+
     for i, disease in enumerate(all_diseases):
         row_idx = i // 2
         if row_idx not in row_frames:
@@ -152,15 +161,26 @@ def make_input_page(parent, on_saved):
         var = ctk.BooleanVar()
         diseases_var[disease] = var
         
-        # Sử dụng grid hoặc giữ nguyên pack nhưng cần set width cố định cho checkbox
         checkbox = ctk.CTkCheckBox(row_frame, text=disease, variable=var,
                                 font=FONT_BODY, text_color=TEXT_PRIMARY,
                                 fg_color=PRIMARY, border_color=INPUT_BORDER,
                                 hover_color=PRIMARY_HOVER, checkmark_color="white",
-                                width=150) # Thêm width cố định để cột thẳng hàng
+                                width=150,
+                                command=_toggle_other_input if disease == "Khác" else None)
         checkbox.pack(side="left", padx=(0, PAD))
     
     entries["loai_benh"] = diseases_var  # Store for later use
+
+    ctk.CTkLabel(card3, text="Khác (nếu có)", font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w"
+                 ).pack(anchor="w", padx=PAD, pady=(PAD_SM, 2))
+    other_disease_entry = ctk.CTkEntry(
+        card3, textvariable=other_disease_var, placeholder_text="Nhập bệnh khác...",
+        font=FONT_BODY, fg_color=INPUT_BG, border_color=INPUT_BORDER,
+        text_color=TEXT_PRIMARY, height=38, corner_radius=RADIUS_SM,
+    )
+    other_disease_entry.pack(fill="x", padx=PAD, pady=(0, PAD_SM))
+    other_disease_entry.configure(state="disabled")
+    entries["loai_benh_khac"] = other_disease_entry
 
     for field, placeholder in [("lich_su_kham", "Ghi chú lịch sử khám..."),
                                 ("lich_su_thuoc", "Ghi chú lịch sử dùng thuốc...")]:
@@ -188,8 +208,15 @@ def make_input_page(parent, on_saved):
         form_data = {}
         for k, v in entries.items():
             if k == "loai_benh":
-                # Handle diseases checkboxes
-                selected_diseases = [disease for disease, var in v.items() if var.get()]
+                selected_diseases = []
+                for disease, var in v.items():
+                    if not var.get():
+                        continue
+                    if disease == "Khác":
+                        other_text = entries["loai_benh_khac"].get().strip()
+                        selected_diseases.append(other_text if other_text else disease)
+                    else:
+                        selected_diseases.append(disease)
                 form_data[k] = selected_diseases
             else:
                 form_data[k] = _text(v)
@@ -201,6 +228,9 @@ def make_input_page(parent, on_saved):
                 # Clear disease checkboxes
                 for disease, var in w.items():
                     var.set(False)
+                if "loai_benh_khac" in entries:
+                    entries["loai_benh_khac"].delete(0, "end")
+                    entries["loai_benh_khac"].configure(state="disabled")
             elif isinstance(w, ctk.CTkTextbox):
                 w.delete("0.0", "end")
             elif isinstance(w, ctk.CTkEntry):

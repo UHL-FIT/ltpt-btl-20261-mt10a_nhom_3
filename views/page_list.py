@@ -40,6 +40,7 @@ def make_list_page(parent):
     disease_filter_var = ctk.StringVar(value="Tất cả")
     disease_options = ["Tất cả", "Tim mạch", "Tiểu đường", "Hô hấp", "Tiêu hóa",
                        "Thần kinh", "Xương khớp", "Da liễu", "Khác"]
+    known_disease_options = set(disease_options[1:-1])
     
     ctk.CTkLabel(filter_frame, text="Loại bệnh:", font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(side="left", padx=(0, PAD_SM))
     disease_combo = ctk.CTkOptionMenu(
@@ -432,7 +433,21 @@ def make_list_page(parent):
         if not df.empty:
             # Apply disease filter
             if disease != "Tất cả":
-                df = df[df["loai_benh"].str.contains(disease, na=False)]
+                if disease == "Khác":
+                    def match_other_types(value: str) -> bool:
+                        if not value:
+                            return False
+                        for item in value.split(","):
+                            item = item.strip()
+                            if not item:
+                                continue
+                            if item == "Khác" or item not in known_disease_options:
+                                return True
+                        return False
+
+                    df = df[df["loai_benh"].apply(match_other_types)]
+                else:
+                    df = df[df["loai_benh"].str.contains(disease, na=False)]
             
             # Apply gender filter
             if gender != "Tất cả":
