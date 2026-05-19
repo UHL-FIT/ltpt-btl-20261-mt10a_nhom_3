@@ -231,9 +231,17 @@ def make_list_page(parent):
         if not selected_id["value"]:
             status_var.set("⚠  Chưa chọn bệnh nhân để xoá!")
             return
-        ok, msg = controller.handle_delete_patient(selected_id["value"], on_success=refresh)
+        ma_bn = selected_id["value"]
+        if not messagebox.askyesno(
+            "Xác nhận xoá",
+            f"Bạn có chắc muốn xoá bệnh nhân '{ma_bn}'?",
+            icon="warning",
+        ):
+            return
+        ok, msg = controller.handle_delete_patient(ma_bn, on_success=refresh)
         status_var.set(("✅  " if ok else "❌  ") + msg)
-        selected_id["value"] = None
+        if ok:
+            selected_id["value"] = None
 
     def _edit():
         if not selected_id["value"]:
@@ -483,7 +491,7 @@ def make_list_page(parent):
         page_state["page"] = 0
         _render_rows(df)
 
-    refresh_job = {"id": None}
+    refresh_job = {"id": None}  # type: ignore
 
     def _run_scheduled_refresh():
         refresh_job["id"] = None
@@ -495,7 +503,7 @@ def make_list_page(parent):
                 outer.after_cancel(refresh_job["id"])
             except Exception:
                 pass
-        refresh_job["id"] = outer.after(180, _run_scheduled_refresh)
+        refresh_job["id"] = outer.after(180, _run_scheduled_refresh)  # type: ignore
 
     # Trigger refresh on any filter change
     search_var.trace_add("write", _schedule_refresh)
@@ -554,14 +562,14 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
         ctk.CTkLabel(scroll, text=label, font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w").pack(anchor="w", pady=(6, 1))
         if key in ("lich_su_kham", "lich_su_thuoc"):
             tb = ctk.CTkTextbox(scroll, height=60, font=FONT_BODY, fg_color=INPUT_BG,
-                                border_color=INPUT_BORDER, text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM)
+                                border_color=INPUT_BORDER, text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM)  # type: ignore
             tb.insert("0.0", str(patient.get(key, "")))
             tb.pack(fill="x")
             widgets[key] = tb
         elif key == "gioi_tinh":
             opt = ctk.CTkOptionMenu(scroll, values=["Nam", "Nữ", "Khác"], font=FONT_BODY,
                                     fg_color=INPUT_BG, button_color=PRIMARY, button_hover_color=PRIMARY_HOVER,
-                                    text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM, height=36)
+                                    text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM, height=36)  # type: ignore
             opt.set(str(patient.get(key, "Khác")))
             opt.pack(fill="x")
             widgets[key] = opt
@@ -576,7 +584,7 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
     # Disease checkboxes
     ctk.CTkLabel(scroll, text="Loại bệnh", font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w").pack(anchor="w", pady=(12, 6))
     disease_frame = ctk.CTkFrame(scroll, fg_color=INPUT_BG, border_width=1, 
-                                 border_color=INPUT_BORDER, corner_radius=RADIUS_SM)
+                                 border_color=INPUT_BORDER, corner_radius=RADIUS_SM)  # type: ignore
     disease_frame.pack(fill="x")
     
     all_diseases = controller.get_all_diseases()
