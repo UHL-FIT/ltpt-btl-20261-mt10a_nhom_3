@@ -62,7 +62,7 @@ def handle_search(keyword: str) -> pd.DataFrame:
     """Return search results as DataFrame."""
     if keyword.strip():
         return model.search_patients(keyword)
-    return model.get_all_patients()
+    return model.get_patients_with_diseases()
 
 
 def get_patient_list() -> pd.DataFrame:
@@ -74,9 +74,9 @@ def get_patient_list() -> pd.DataFrame:
 # ANALYTICS
 # ──────────────────────────────────────────────
 
-def get_bp_by_age_group() -> pd.DataFrame:
+def get_bp_by_age_group(df=None) -> pd.DataFrame:
     """Average blood pressure by age group."""
-    df = model.get_all_patients()
+    if df is None: df = model.get_all_patients()
     return model.avg_blood_pressure_by_age_group(df)
 
 
@@ -85,16 +85,27 @@ def get_disease_frequency() -> pd.DataFrame:
     return model.disease_frequency()
 
 
-def get_bmi_distribution() -> pd.DataFrame:
+def get_bmi_distribution(df=None) -> pd.DataFrame:
     """BMI data for all patients."""
-    df = model.get_all_patients()
+    if df is None: df = model.get_all_patients()
     return model.bmi_distribution(df)
 
 
-def get_summary_stats() -> dict:
+def get_summary_stats(df=None) -> dict:
     """High-level summary statistics."""
-    df = model.get_all_patients()
+    if df is None: df = model.get_all_patients()
     return model.summary_stats(df)
+
+
+def get_stats_payload() -> tuple[dict, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Fetch shared dashboard data once, then derive all stats from it."""
+    df = model.get_all_patients()
+    return (
+        model.summary_stats(df),
+        model.avg_blood_pressure_by_age_group(df),
+        model.disease_frequency(),
+        model.bmi_distribution(df),
+    )
 
 
 # ──────────────────────────────────────────────

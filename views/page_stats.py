@@ -260,20 +260,14 @@ def make_stats_page(parent):
             "grid.color":        _rc(CARD_BORDER),
         })
         
-        stats = controller.get_summary_stats()
+        stats, df_bp, df_dis, df_bmi = controller.get_stats_payload()
         for key, lbl in kpi_labels.items():
             lbl.configure(text=str(stats.get(key, "–")))
 
-        df_bp  = controller.get_bp_by_age_group()
-        df_dis = controller.get_disease_frequency()
-        df_bmi = controller.get_bmi_distribution()
-
+        # Xóa các dòng .after đi, gọi trực tiếp để vẽ ngầm cùng lúc
         _draw_bp_chart(df_bp)
         _draw_disease_chart(df_dis)
         _draw_bmi_chart(df_bmi)
         _draw_bp_table(df_bp)
-
-    # Initial load
-    _refresh()
 
     return outer, _refresh

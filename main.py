@@ -41,16 +41,22 @@ def build_app():
     content_area.pack(side="right", fill="both", expand=True)
 
     # Pages cache
+    # Pages cache
     pages: dict[str, ctk.CTkFrame] = {}
     refresh_fns: dict[str, callable] = {}
     current_page = {"key": None}
+    need_refresh = {"list": True, "stats": True}  # Thêm cờ báo hiệu cần load lại data
 
     # ── Page factory (lazy init) ───────────────────────────────────────────────
     def _on_data_changed():
         """Called after add/delete to propagate refreshes."""
-        for key, fn in refresh_fns.items():
-            if key != "input":
-                fn()
+        need_refresh["list"] = True   # Bật cờ báo danh sách cần vẽ lại
+        need_refresh["stats"] = True  # Bật cờ báo thống kê cần vẽ lại
+        
+        current = current_page["key"]
+        if current and current != "input" and current in refresh_fns:
+            refresh_fns[current]()
+            need_refresh[current] = False # Load xong thì tắt cờ đi
 
     def _get_or_create_page(key: str):
         if key in pages:
@@ -91,8 +97,12 @@ def build_app():
         frame.pack(fill="both", expand=True)
 
         # Refresh page data when switching to it
+        # Refresh page data when switching to it
+        # Chỉ refresh nếu dữ liệu thực sự bị thay đổi (need_refresh = True)
         if key in refresh_fns:
-            refresh_fns[key]()
+            if need_refresh.get(key, True):
+                content_area.after(10, refresh_fns[key]) # Delay 10ms để UI nhảy tab mượt
+                need_refresh[key] = False # Đẩy việc load data ra phía sau để UI không bị block
 
         set_active(key)
 

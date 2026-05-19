@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox
 
 COLUMNS = ["Mã BN", "Họ tên", "Tuổi", "Giới tính", "Cao (cm)", "Nặng (kg)", "Huyết áp", "BMI", "Loại bệnh"]
 COL_WIDTHS = [80, 160, 50, 80, 70, 70, 90, 70, 110]
+PAGE_SIZE = 25  # Giảm xuống 25 dòng mỗi trang để load mượt
 
 
 def make_list_page(parent):
@@ -183,6 +184,7 @@ def make_list_page(parent):
         height_min_entry.delete(0, "end")
         height_max_entry.delete(0, "end")
         search_var.set("")
+        _schedule_refresh()
 
     reset_btn = ctk.CTkButton(
         filter_inner, text="↻ Đặt lại", font=FONT_SMALL, height=36, width=90,
@@ -299,24 +301,57 @@ def make_list_page(parent):
     count_lbl = ctk.CTkLabel(action_bar, text="", font=FONT_SMALL, text_color=TEXT_MUTED)
     count_lbl.pack(side="right", padx=PAD_LG)
 
+    page_state = {"page": 0}
+    current_df = {"df": None}
+
+    next_page_btn = ctk.CTkButton(
+        action_bar, text="Sau", font=FONT_SMALL, height=30, width=70,
+        fg_color=CARD_BG, hover_color=SIDEBAR_HOVER, text_color=TEXT_SECONDARY,
+        corner_radius=RADIUS_MD, command=lambda: _change_page(1),
+    )
+    next_page_btn.pack(side="right", padx=(PAD_SM, 0), pady=PAD_SM)
+
+    prev_page_btn = ctk.CTkButton(
+        action_bar, text="Trước", font=FONT_SMALL, height=30, width=70,
+        fg_color=CARD_BG, hover_color=SIDEBAR_HOVER, text_color=TEXT_SECONDARY,
+        corner_radius=RADIUS_MD, command=lambda: _change_page(-1),
+    )
+    prev_page_btn.pack(side="right", padx=(PAD_SM, 0), pady=PAD_SM)
+
     # ── Render table rows ─────────────────────────────────────────────────────
     row_frames = []
 
     def _render_rows(df):
         nonlocal row_frames
+        current_df["df"] = df
+        
+        # Xoá trực tiếp từ list đã lưu thay vì dùng winfo_children() chậm chạp
         for f in row_frames:
-            f.destroy()
+            try:
+                f.destroy()
+            except:
+                pass
         row_frames.clear()
+        total = len(df)
+        max_page = max((total - 1) // PAGE_SIZE, 0)
+        page_state["page"] = min(page_state["page"], max_page)
+        start = page_state["page"] * PAGE_SIZE
+        end = min(start + PAGE_SIZE, total)
+
+        prev_page_btn.configure(state="normal" if page_state["page"] > 0 else "disabled")
+        next_page_btn.configure(state="normal" if page_state["page"] < max_page else "disabled")
+        count_lbl.configure(text=f"{start + 1 if total else 0}-{end} / {total}")
 
         if df.empty:
             ctk.CTkLabel(table_frame, text="Không có dữ liệu.",
                          font=FONT_BODY, text_color=TEXT_MUTED).pack(pady=PAD_LG)
             return
 
-        bmi_df = model.bmi_distribution(df)
+        display_df = df.iloc[start:end]
+        bmi_df = model.bmi_distribution(display_df)
         bmi_map = dict(zip(bmi_df["ma_bn"], bmi_df["bmi"])) if not bmi_df.empty else {}
 
-        for i, row in df.iterrows():
+        for i, (_, row) in enumerate(display_df.iterrows()):
             bg = CARD_BG if i % 2 == 0 else INPUT_BG
             rf = ctk.CTkFrame(table_frame, fg_color=bg, corner_radius=RADIUS_SM, height=38)
             rf.pack(fill="x", pady=1)
@@ -344,6 +379,15 @@ def make_list_page(parent):
             rf.bind("<Button-1>", lambda e, m=ma, f=rf: _on_row_click(m, f))
             for child in rf.winfo_children():
                 child.bind("<Button-1>", lambda e, m=ma, f=rf: _on_row_click(m, f))
+
+    def _change_page(delta):
+        df = current_df["df"]
+        if df is None:
+            return
+        total = len(df)
+        max_page = max((total - 1) // PAGE_SIZE, 0)
+        page_state["page"] = max(0, min(page_state["page"] + delta, max_page))
+        _render_rows(df)
 
     _current_highlight = {"frame": None}
 
@@ -436,22 +480,35 @@ def make_list_page(parent):
                 pass
         
         df = df.reset_index(drop=True)
+        page_state["page"] = 0
         _render_rows(df)
-        count_lbl.configure(text=f"{len(df)} bệnh nhân")
+
+    refresh_job = {"id": None}
+
+    def _run_scheduled_refresh():
+        refresh_job["id"] = None
+        refresh()
+
+    def _schedule_refresh(*_):
+        if refresh_job["id"] is not None:
+            try:
+                outer.after_cancel(refresh_job["id"])
+            except Exception:
+                pass
+        refresh_job["id"] = outer.after(180, _run_scheduled_refresh)
 
     # Trigger refresh on any filter change
-    search_var.trace_add("write", lambda *_: refresh())
-    disease_filter_var.trace_add("write", lambda *_: refresh())
-    age_filter_var.trace_add("write", lambda *_: refresh())
-    gender_filter_var.trace_add("write", lambda *_: refresh())
-    bmi_filter_var.trace_add("write", lambda *_: refresh())
-    weight_min_entry.bind("<KeyRelease>", lambda *_: refresh())
-    weight_max_entry.bind("<KeyRelease>", lambda *_: refresh())
-    height_min_entry.bind("<KeyRelease>", lambda *_: refresh())
-    height_max_entry.bind("<KeyRelease>", lambda *_: refresh())
-    bp_filter_var.trace_add("write", lambda *_: refresh())
+    search_var.trace_add("write", _schedule_refresh)
+    disease_filter_var.trace_add("write", _schedule_refresh)
+    age_filter_var.trace_add("write", _schedule_refresh)
+    gender_filter_var.trace_add("write", _schedule_refresh)
+    bmi_filter_var.trace_add("write", _schedule_refresh)
+    weight_min_entry.bind("<KeyRelease>", _schedule_refresh)
+    weight_max_entry.bind("<KeyRelease>", _schedule_refresh)
+    height_min_entry.bind("<KeyRelease>", _schedule_refresh)
+    height_max_entry.bind("<KeyRelease>", _schedule_refresh)
+    bp_filter_var.trace_add("write", _schedule_refresh)
 
-    refresh()
     return outer, refresh
 
 

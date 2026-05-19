@@ -52,7 +52,16 @@ def init_db() -> None:
         FOREIGN KEY (ma_bn) REFERENCES patients(ma_bn) ON DELETE CASCADE,
         FOREIGN KEY (disease_id) REFERENCES diseases(id),
         UNIQUE(ma_bn, disease_id)
-    )
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_patient_diseases_ma_bn
+        ON patient_diseases(ma_bn);
+
+    CREATE INDEX IF NOT EXISTS idx_patient_diseases_disease_id
+        ON patient_diseases(disease_id);
+
+    CREATE INDEX IF NOT EXISTS idx_patients_ten
+        ON patients(ten)
     """
     with get_connection() as conn:
         # Split multiple statements
@@ -338,19 +347,16 @@ def get_all_patients() -> pd.DataFrame:
 def get_patients_with_diseases() -> pd.DataFrame:
     """Fetch all patients with their diseases as a DataFrame (with loai_benh column)."""
     try:
+        sql = """
+            SELECT p.*, IFNULL(GROUP_CONCAT(d.ten, ', '), '') as loai_benh
+            FROM patients p
+            LEFT JOIN patient_diseases pd ON p.ma_bn = pd.ma_bn
+            LEFT JOIN diseases d ON pd.disease_id = d.id
+            GROUP BY p.ma_bn
+            ORDER BY p.ma_bn
+        """
         with get_connection() as conn:
-            df = pd.read_sql_query("SELECT * FROM patients", conn)
-        
-        if df.empty:
-            return df
-        
-        # Add loai_benh column with comma-separated disease names
-        diseases_list = []
-        for ma_bn in df["ma_bn"]:
-            diseases = get_patient_diseases(ma_bn)
-            diseases_list.append(", ".join(diseases) if diseases else "")
-        
-        df["loai_benh"] = diseases_list
+            df = pd.read_sql_query(sql, conn)
         return df
     except Exception:
         return pd.DataFrame()
@@ -359,7 +365,15 @@ def get_patients_with_diseases() -> pd.DataFrame:
 def search_patients(keyword: str) -> pd.DataFrame:
     """Search patients by name or ID (case-insensitive)."""
     try:
-        sql = "SELECT * FROM patients WHERE LOWER(ten) LIKE ? OR LOWER(ma_bn) LIKE ?"
+        sql = """
+            SELECT p.*, IFNULL(GROUP_CONCAT(d.ten, ', '), '') as loai_benh
+            FROM patients p
+            LEFT JOIN patient_diseases pd ON p.ma_bn = pd.ma_bn
+            LEFT JOIN diseases d ON pd.disease_id = d.id
+            WHERE LOWER(p.ten) LIKE ? OR LOWER(p.ma_bn) LIKE ?
+            GROUP BY p.ma_bn
+            ORDER BY p.ma_bn
+        """
         kw = f"%{keyword.lower()}%"
         with get_connection() as conn:
             df = pd.read_sql_query(sql, conn, params=(kw, kw))
@@ -475,10 +489,14 @@ def bmi_distribution(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     df = df.copy()
-    df["bmi"] = df.apply(
-        lambda r: calculate_bmi(float(r["can_nang"]), float(r["chieu_cao"])), axis=1
-    )
+    
+    # Ép kiểu và tính toán đồng loạt bằng Vectorization (Nhanh hơn apply rất nhiều)
+    df["can_nang"] = pd.to_numeric(df["can_nang"], errors="coerce")
+    df["chieu_cao"] = pd.to_numeric(df["chieu_cao"], errors="coerce")
+    
+    df["bmi"] = (df["can_nang"] / ((df["chieu_cao"] / 100.0) ** 2)).round(2)
     df["phan_loai_bmi"] = df["bmi"].apply(classify_bmi)
+    
     return df[["ma_bn", "ten", "bmi", "phan_loai_bmi"]]
 
 
