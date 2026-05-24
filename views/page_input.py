@@ -5,6 +5,7 @@ page_input.py – Patient data entry form page.
 import customtkinter as ctk
 from views.theme import *
 import controller
+import model
 
 
 GIOI_TINH_OPTIONS = ["Nam", "Nữ", "Khác"]
@@ -70,6 +71,7 @@ def make_input_page(parent, on_saved):
     status_label.pack(fill="x", padx=PAD_LG)
 
     entries = {}  # field_name -> widget
+    error_vars = {}  # field_name -> StringVar for inline errors
 
     # ══ Card 1: Thông tin cơ bản ═════════════════════════════════════════════
     card1 = _card(scroll, "👤  Thông tin cơ bản")
@@ -80,6 +82,11 @@ def make_input_page(parent, on_saved):
     _label(r1, "Họ và tên *", col=1, row=0)
     entries["ma_bn"] = _entry(r1, col=0, row=1)
     entries["ten"]   = _entry(r1, col=1, row=1)
+    # Inline error labels for r1
+    error_vars["ma_bn"] = ctk.StringVar(value="")
+    ctk.CTkLabel(r1, textvariable=error_vars["ma_bn"], font=FONT_SMALL, text_color=DANGER).grid(row=2, column=0, sticky="w", padx=(0, 0), pady=(0, 4))
+    error_vars["ten"] = ctk.StringVar(value="")
+    ctk.CTkLabel(r1, textvariable=error_vars["ten"], font=FONT_SMALL, text_color=DANGER).grid(row=2, column=1, sticky="w", padx=(PAD, 0), pady=(0, 4))
 
     r2 = _row(card1)
     _label(r2, "Tuổi *", col=0, row=0)
@@ -92,6 +99,9 @@ def make_input_page(parent, on_saved):
     )
     entries["gioi_tinh"].grid(row=1, column=1, sticky="ew", padx=(PAD, 0), pady=(0, 4))
     entries["gioi_tinh"].set(GIOI_TINH_OPTIONS[0])
+    # Inline error for tuổi
+    error_vars["tuoi"] = ctk.StringVar(value="")
+    ctk.CTkLabel(r2, textvariable=error_vars["tuoi"], font=FONT_SMALL, text_color=DANGER).grid(row=2, column=0, sticky="w", padx=(0, 0), pady=(0, 4))
 
     # ══ Card 2: Chỉ số thể chất ══════════════════════════════════════════════
     card2 = _card(scroll, "⚕️  Chỉ số thể chất")
@@ -102,6 +112,11 @@ def make_input_page(parent, on_saved):
     _label(r3, "Cân nặng (kg) *", col=1, row=0)
     entries["chieu_cao"] = _entry(r3, col=0, row=1, placeholder_text="170")
     entries["can_nang"]  = _entry(r3, col=1, row=1, placeholder_text="65")
+    # Inline errors for height/weight
+    error_vars["chieu_cao"] = ctk.StringVar(value="")
+    ctk.CTkLabel(r3, textvariable=error_vars["chieu_cao"], font=FONT_SMALL, text_color=DANGER).grid(row=2, column=0, sticky="w", padx=(0, 0), pady=(0, 4))
+    error_vars["can_nang"] = ctk.StringVar(value="")
+    ctk.CTkLabel(r3, textvariable=error_vars["can_nang"], font=FONT_SMALL, text_color=DANGER).grid(row=2, column=1, sticky="w", padx=(PAD, 0), pady=(0, 4))
 
     # BMI preview
     bmi_var = ctk.StringVar(value="")
@@ -121,6 +136,8 @@ def make_input_page(parent, on_saved):
     r4 = _row(card2)
     _label(r4, "Huyết áp (ví dụ: 120/80)", col=0, row=0)
     entries["huyet_ap"] = _entry(r4, col=0, row=1, placeholder_text="120/80")
+    error_vars["huyet_ap"] = ctk.StringVar(value="")
+    ctk.CTkLabel(r4, textvariable=error_vars["huyet_ap"], font=FONT_SMALL, text_color=DANGER).grid(row=2, column=0, sticky="w", padx=(0, 0), pady=(0, 4))
 
     # ══ Card 3: Hồ sơ y tế ═══════════════════════════════════════════════════
     card3 = _card(scroll, "📄  Hồ sơ y tế")
@@ -148,6 +165,7 @@ def make_input_page(parent, on_saved):
         else:
             other_disease_entry.configure(state="disabled")
             other_disease_var.set("")
+        _validate_live()
 
     for i, disease in enumerate(all_diseases):
         row_idx = i // 2
@@ -181,6 +199,9 @@ def make_input_page(parent, on_saved):
     other_disease_entry.pack(fill="x", padx=PAD, pady=(0, PAD_SM))
     other_disease_entry.configure(state="disabled")
     entries["loai_benh_khac"] = other_disease_entry
+    # Inline error for other-disease (packed under the entry)
+    error_vars["loai_benh_khac"] = ctk.StringVar(value="")
+    ctk.CTkLabel(card3, textvariable=error_vars["loai_benh_khac"], font=FONT_SMALL, text_color=DANGER).pack(anchor="w", padx=PAD, pady=(0, 8))
 
     for field, placeholder in [("lich_su_kham", "Ghi chú lịch sử khám..."),
                                 ("lich_su_thuoc", "Ghi chú lịch sử dùng thuốc...")]:
@@ -221,6 +242,64 @@ def make_input_page(parent, on_saved):
             else:
                 form_data[k] = _text(v)
         return form_data
+
+    def _validate_live(*_):
+        """Validate current form live and show first error (if any) in status banner."""
+        data = _collect_form()
+        errors = model.validate_patient(data)
+        # Clear previous inline errors
+        for v in error_vars.values():
+            v.set("")
+        status_var.set("")
+        if not errors:
+            return True
+
+        # Map generic error messages to fields when possible
+        for msg in errors:
+            if "Mã bệnh nhân" in msg or "Mã bệnh" in msg:
+                error_vars.get("ma_bn", ctk.StringVar()).set(msg)
+            elif "Tên bệnh nhân" in msg or msg.startswith("Tên"):
+                error_vars.get("ten", ctk.StringVar()).set(msg)
+            elif "Tuổi" in msg:
+                error_vars.get("tuoi", ctk.StringVar()).set(msg)
+            elif "Chiều cao" in msg or "Chiều cao phải" in msg:
+                error_vars.get("chieu_cao", ctk.StringVar()).set(msg)
+            elif "Cân nặng" in msg:
+                error_vars.get("can_nang", ctk.StringVar()).set(msg)
+            elif "Huyết áp" in msg:
+                error_vars.get("huyet_ap", ctk.StringVar()).set(msg)
+            else:
+                # Fallback: show in status banner if we can't map to a field
+                status_label.configure(text_color=DANGER)
+                status_var.set(f"❌  {msg}")
+        return False
+
+    # Attach traces and binds for live validation
+    for disease, var in diseases_var.items():
+        try:
+            var.trace_add("write", lambda *a, d=disease: _validate_live())
+        except Exception:
+            try:
+                var.trace("w", lambda *a, d=disease: _validate_live())
+            except Exception:
+                pass
+
+    for field in ("lich_su_kham", "lich_su_thuoc"):
+        try:
+            entries[field].bind("<KeyRelease>", lambda e: _validate_live())
+        except Exception:
+            pass
+
+    try:
+        entries["gioi_tinh"].configure(command=lambda v: _validate_live())
+    except Exception:
+        pass
+
+    for name in ["ma_bn", "ten", "tuoi", "chieu_cao", "can_nang", "huyet_ap", "loai_benh_khac"]:
+        try:
+            entries[name].bind("<KeyRelease>", lambda e: _validate_live())
+        except Exception:
+            pass
 
     def _clear(keep_status=False):
         for k, w in entries.items():
