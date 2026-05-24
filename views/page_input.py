@@ -178,8 +178,8 @@ def make_input_page(parent, on_saved):
         
         var = ctk.BooleanVar()
         diseases_var[disease] = var
-        
-        checkbox = ctk.CTkCheckBox(row_frame, text=disease, variable=var,
+        display_text = "tâm thần" if disease == "ok" else disease
+        checkbox = ctk.CTkCheckBox(row_frame, text=display_text, variable=var,
                                 font=FONT_BODY, text_color=TEXT_PRIMARY,
                                 fg_color=PRIMARY, border_color=INPUT_BORDER,
                                 hover_color=PRIMARY_HOVER, checkmark_color="white",
@@ -237,7 +237,7 @@ def make_input_page(parent, on_saved):
                         other_text = entries["loai_benh_khac"].get().strip()
                         selected_diseases.append(other_text if other_text else disease)
                     else:
-                        selected_diseases.append(disease)
+                        selected_diseases.append("tâm thần" if disease == "ok" else disease)
                 form_data[k] = selected_diseases
             else:
                 form_data[k] = _text(v)
