@@ -7,11 +7,11 @@ import customtkinter as ctk
 from views.theme import *
 import controller
 import model
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox,ttk
 
 COLUMNS = ["Mã BN", "Họ tên", "Tuổi", "Giới tính", "Cao (cm)", "Nặng (kg)", "Huyết áp", "BMI", "Loại bệnh"]
 COL_WIDTHS = [80, 160, 50, 80, 70, 70, 90, 70, 110]
-PAGE_SIZE = 25  # Giảm xuống 25 dòng mỗi trang để load mượt
+PAGE_SIZE = 100
 
 
 def make_list_page(parent):
@@ -196,26 +196,62 @@ def make_list_page(parent):
 
     # ── Status bar ───────────────────────────────────────────────────────────
     status_var = ctk.StringVar(value="")
-    status_lbl = ctk.CTkLabel(outer, textvariable=status_var, font=FONT_SMALL,
-                              text_color=TEXT_MUTED, fg_color="transparent")
+    status_lbl = ctk.CTkLabel(outer, textvariable=status_var, font=FONT_BODY,
+                              text_color=SECONDARY, fg_color="transparent",
+                              wraplength=1000, justify="left") # wraplength giúp tự xuống dòng
     status_lbl.pack(anchor="w", padx=PAD_LG, pady=(PAD_SM, 0))
 
     # ── Table header row ─────────────────────────────────────────────────────
-    col_header = ctk.CTkFrame(outer, fg_color=SIDEBAR_BG, corner_radius=0, height=34)
-    col_header.pack(fill="x", padx=PAD_LG, pady=(PAD_SM, 0))
-    col_header.pack_propagate(False)
+    # ── Table Container (Dùng Treeview thay cho Frame) ───────────────────────
+    # ── Table Container (Dùng Treeview thay cho Frame) ───────────────────────
+    table_container = ctk.CTkFrame(outer, fg_color=CONTENT_BG, corner_radius=0)
+    table_container.pack(fill="both", expand=True, padx=PAD_LG, pady=(0, PAD_SM))
 
+    def _get_color(color_tuple):
+        mode = ctk.get_appearance_mode()
+        return color_tuple[1] if mode == "Dark" else color_tuple[0]
+
+    style = ttk.Style()
+    style.theme_use("default")
+    
+    style.configure("Treeview",
+                    background=_get_color(CARD_BG),
+                    foreground=_get_color(TEXT_PRIMARY),
+                    rowheight=35,
+                    fieldbackground=_get_color(CARD_BG),
+                    borderwidth=0,
+                    font=(FONT_FAMILY, 11))
+    
+    style.map('Treeview', background=[('selected', PRIMARY)])
+
+    style.configure("Treeview.Heading",
+                    background=_get_color(SIDEBAR_BG),
+                    foreground=_get_color(TEXT_SECONDARY),
+                    font=(FONT_FAMILY, 11, "bold"),
+                    borderwidth=0)
+    style.map("Treeview.Heading", background=[('active', _get_color(SIDEBAR_HOVER))])
+
+    tree = ttk.Treeview(table_container, columns=COLUMNS, show="headings", selectmode="browse")
+    
+    # 1. Khai báo 2 thanh cuộn
+    vsb = ttk.Scrollbar(table_container, orient="vertical", command=tree.yview)
+    hsb = ttk.Scrollbar(table_container, orient="horizontal", command=tree.xview)
+    tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+    
+    # 2. PACK ĐÚNG THỨ TỰ (Quan trọng: Không dùng Grid nữa để tránh lỗi layout)
+    vsb.pack(side="right", fill="y")
+    hsb.pack(side="bottom", fill="x")
+    tree.pack(side="left", fill="both", expand=True)
+
+    # 3. Phân bổ cột tự nhiên: Đẹp trên màn hình to, tự trượt ngang trên màn hình nhỏ
     for col, w in zip(COLUMNS, COL_WIDTHS):
-        ctk.CTkLabel(
-            col_header, text=col, font=(FONT_FAMILY, 11, "bold"),
-            text_color=TEXT_SECONDARY, width=w, anchor="w",
-        ).pack(side="left", padx=4)
-
-    # ── Table body (scrollable) ────────────────────────────────────────────
-    table_frame = ctk.CTkScrollableFrame(
-        outer, fg_color=CONTENT_BG, corner_radius=0,
-    )
-    table_frame.pack(fill="both", expand=True, padx=PAD_LG, pady=(0, PAD_SM))
+        tree.heading(col, text=col, anchor="center")
+        
+        # Đặt minwidth = kích thước chuẩn. stretch=True để cột tự dàn đều cho đẹp.
+        if col in ["Họ tên", "Loại bệnh"]:
+            tree.column(col, width=w, minwidth=w, stretch=True, anchor="w")
+        else:
+            tree.column(col, width=w, minwidth=w, stretch=True, anchor="center")
 
     # ── Bottom action bar ─────────────────────────────────────────────────────
     action_bar = ctk.CTkFrame(outer, fg_color=CARD_BG, corner_radius=0, height=56)
@@ -331,16 +367,12 @@ def make_list_page(parent):
     row_frames = []
 
     def _render_rows(df):
-        nonlocal row_frames
         current_df["df"] = df
         
-        # Xoá trực tiếp từ list đã lưu thay vì dùng winfo_children() chậm chạp
-        for f in row_frames:
-            try:
-                f.destroy()
-            except:
-                pass
-        row_frames.clear()
+        # 1. Xoá cực nhanh toàn bộ dữ liệu cũ trong bảng
+        for item in tree.get_children():
+            tree.delete(item)
+            
         total = len(df)
         max_page = max((total - 1) // PAGE_SIZE, 0)
         page_state["page"] = min(page_state["page"], max_page)
@@ -352,42 +384,27 @@ def make_list_page(parent):
         count_lbl.configure(text=f"{start + 1 if total else 0}-{end} / {total}")
 
         if df.empty:
-            ctk.CTkLabel(table_frame, text="Không có dữ liệu.",
-                         font=FONT_BODY, text_color=TEXT_MUTED).pack(pady=PAD_LG)
             return
 
         display_df = df.iloc[start:end]
         bmi_df = model.bmi_distribution(display_df)
         bmi_map = dict(zip(bmi_df["ma_bn"], bmi_df["bmi"])) if not bmi_df.empty else {}
 
-        for i, (_, row) in enumerate(display_df.iterrows()):
-            bg = CARD_BG if i % 2 == 0 else INPUT_BG
-            rf = ctk.CTkFrame(table_frame, fg_color=bg, corner_radius=RADIUS_SM, height=38)
-            rf.pack(fill="x", pady=1)
-            rf.pack_propagate(False)
-            row_frames.append(rf)
-
+        # 2. Insert dữ liệu mới
+        for _, row in display_df.iterrows():
             ma = str(row["ma_bn"])
             bmi_val = bmi_map.get(ma, "-")
             bmi_str = f"{bmi_val:.1f}" if isinstance(bmi_val, float) else "-"
 
-            values = [
+            values = (
                 ma, str(row["ten"]), str(row["tuoi"]),
                 str(row["gioi_tinh"]),
                 str(row["chieu_cao"]), str(row["can_nang"]),
                 str(row["huyet_ap"]), bmi_str, str(row["loai_benh"]),
-            ]
-
-            for val, w in zip(values, COL_WIDTHS):
-                ctk.CTkLabel(
-                    rf, text=val, font=FONT_SMALL,
-                    text_color=TEXT_PRIMARY, width=w, anchor="w",
-                ).pack(side="left", padx=4)
-
-            # Click to select
-            rf.bind("<Button-1>", lambda e, m=ma, f=rf: _on_row_click(m, f))
-            for child in rf.winfo_children():
-                child.bind("<Button-1>", lambda e, m=ma, f=rf: _on_row_click(m, f))
+            )
+            
+            # Insert trực tiếp vào bảng
+            tree.insert("", "end", values=values)
 
     def _change_page(delta):
         df = current_df["df"]
@@ -400,17 +417,28 @@ def make_list_page(parent):
 
     _current_highlight = {"frame": None}
 
-    def _on_row_click(ma_bn, frame):
-        if _current_highlight["frame"]:
-            prev = _current_highlight["frame"]
-            try:
-                prev.configure(fg_color=prev._orig_color)
-            except Exception:
-                pass
-        _current_highlight["frame"] = frame
-        frame._orig_color = frame.cget("fg_color")
-        frame.configure(fg_color=PRIMARY)
-        _select(ma_bn)
+    # ── Bắt sự kiện Click chọn bệnh nhân ─────────────────────────────────────
+    def _on_tree_select(event):
+        selected_items = tree.selection()
+        if not selected_items:
+            selected_id["value"] = None
+            status_var.set("")
+            return
+        
+        item = selected_items[0]
+        values = tree.item(item, "values")
+        if values:
+            ma_bn = values[0]  # Cột 0: Mã BN
+            ten_bn = values[1] # Cột 1: Họ tên
+            loai_benh = values[8] # Cột 8: Loại bệnh
+            
+            _select(ma_bn) # Giữ nguyên hàm chọn để nút Sửa/Xoá hoạt động
+            
+            # Ghi đè lại status_var để hiển thị cực kỳ chi tiết
+            status_var.set(f"👤 {ma_bn} - {ten_bn}  |  🏥 Chi tiết bệnh: {loai_benh}")
+
+    # Gắn sự kiện khi click/đổi dòng
+    tree.bind("<<TreeviewSelect>>", _on_tree_select)
 
     def refresh():
         kw = search_var.get()

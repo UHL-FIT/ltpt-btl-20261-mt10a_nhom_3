@@ -38,7 +38,6 @@ def build_app():
 
     # Content container (right side)
     content_area = ctk.CTkFrame(main_frame, fg_color=CONTENT_BG, corner_radius=0)
-    content_area.pack(side="right", fill="both", expand=True)
 
     # Pages cache
     # Pages cache
@@ -108,7 +107,9 @@ def build_app():
 
     # Build sidebar (after navigate is defined)
     sidebar_frame, set_active = make_sidebar(main_frame, on_navigate=navigate)
+
     sidebar_frame.pack(side="left", fill="y")
+    content_area.pack(side="right", fill="both", expand=True)
 
     # Default page
     navigate("input")
