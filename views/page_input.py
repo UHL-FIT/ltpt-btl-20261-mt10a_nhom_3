@@ -6,6 +6,8 @@ import customtkinter as ctk
 from views.theme import *
 import controller
 import model
+from tkinter import messagebox
+from datetime import datetime
 
 
 GIOI_TINH_OPTIONS = ["Nam", "Nữ", "Khác"]
@@ -203,17 +205,46 @@ def make_input_page(parent, on_saved):
     error_vars["loai_benh_khac"] = ctk.StringVar(value="")
     ctk.CTkLabel(card3, textvariable=error_vars["loai_benh_khac"], font=FONT_SMALL, text_color=DANGER).pack(anchor="w", padx=PAD, pady=(0, 8))
 
-    for field, placeholder in [("lich_su_kham", "Ghi chú lịch sử khám..."),
-                                ("lich_su_thuoc", "Ghi chú lịch sử dùng thuốc...")]:
-        ctk.CTkLabel(card3, text=field.replace("_", " ").title(),
-                     font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w"
-                     ).pack(anchor="w", padx=PAD, pady=(PAD_SM, 2))
-        tb = ctk.CTkTextbox(card3, font=FONT_BODY, fg_color=INPUT_BG,
+    # ── Ngày khám (Tự động ngày hôm nay) ────────────────────────────────────────────────
+    ctk.CTkLabel(card3, text="Ngày khám", font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w"
+                 ).pack(anchor="w", padx=PAD, pady=(PAD_SM, 2))
+    
+    ngay_kham_frame = ctk.CTkFrame(card3, fg_color="transparent")
+    ngay_kham_frame.pack(fill="x", padx=PAD, pady=(0, PAD_SM))
+    
+    # Auto-set current date
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    ngay_kham_var = ctk.StringVar(value=today_date)
+    ngay_kham_entry = ctk.CTkEntry(
+        ngay_kham_frame, textvariable=ngay_kham_var,
+        font=FONT_BODY, fg_color=INPUT_BG, border_color=INPUT_BORDER,
+        text_color=TEXT_PRIMARY, height=38, corner_radius=RADIUS_SM,
+        placeholder_text="YYYY-MM-DD"
+    )
+    ngay_kham_entry.pack(side="left", fill="x", expand=True)
+    entries["ngay_kham"] = ngay_kham_entry
+    
+    def _set_today_date():
+        """Set ngày khám to today's date."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        ngay_kham_var.set(today)
+        _validate_live()
+    
+    ctk.CTkButton(
+        ngay_kham_frame, text="Hôm nay", font=FONT_SMALL, height=38,
+        fg_color=PRIMARY, hover_color=PRIMARY_HOVER, text_color="white",
+        corner_radius=RADIUS_SM, command=_set_today_date
+    ).pack(side="right", padx=(PAD_SM, 0))
+
+    # ── Lịch sử dùng thuốc (Textbox) ────────────────────────────────────────────────
+    ctk.CTkLabel(card3, text="Lịch sử dùng thuốc", font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w"
+                 ).pack(anchor="w", padx=PAD, pady=(PAD_SM, 2))
+    tb_thuoc = ctk.CTkTextbox(card3, font=FONT_BODY, fg_color=INPUT_BG,
                             border_color=INPUT_BORDER, text_color=TEXT_PRIMARY,
                             height=70, corner_radius=RADIUS_SM)
-        tb.pack(fill="x", padx=PAD, pady=(0, PAD_SM))
-        tb.insert("0.0", placeholder)
-        entries[field] = tb
+    tb_thuoc.pack(fill="x", padx=PAD, pady=(0, PAD_SM))
+    tb_thuoc.insert("0.0", "Ghi chú lịch sử dùng thuốc...")
+    entries["lich_su_thuoc"] = tb_thuoc
 
     # ══ Action bar ═══════════════════════════════════════════════════════════
     action_bar = ctk.CTkFrame(scroll, fg_color="transparent")
@@ -284,7 +315,7 @@ def make_input_page(parent, on_saved):
             except Exception:
                 pass
 
-    for field in ("lich_su_kham", "lich_su_thuoc"):
+    for field in ("lich_su_thuoc", "ngay_kham"):
         try:
             entries[field].bind("<KeyRelease>", lambda e: _validate_live())
         except Exception:

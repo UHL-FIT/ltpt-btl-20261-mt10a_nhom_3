@@ -435,10 +435,21 @@ def make_list_page(parent):
             _select(ma_bn) # Giữ nguyên hàm chọn để nút Sửa/Xoá hoạt động
             
             # Ghi đè lại status_var để hiển thị cực kỳ chi tiết
-            status_var.set(f"👤 {ma_bn} - {ten_bn}  |  🏥 Chi tiết bệnh: {loai_benh}")
+            status_var.set(f"👤 {ma_bn} - {ten_bn}  |  🏥 Chi tiết bệnh: {loai_benh}  |  Nhấn đôi chuột để xem chi tiết")
+
+    def _on_tree_double_click(event):
+        """Handle double-click to open detail dialog."""
+        selected_items = tree.selection()
+        if selected_items:
+            item = selected_items[0]
+            values = tree.item(item, "values")
+            if values:
+                ma_bn = values[0]
+                _open_detail_dialog(outer, ma_bn, refresh)
 
     # Gắn sự kiện khi click/đổi dòng
     tree.bind("<<TreeviewSelect>>", _on_tree_select)
+    tree.bind("<Double-1>", _on_tree_double_click)
 
     def refresh():
         kw = search_var.get()
@@ -563,6 +574,131 @@ def make_list_page(parent):
     return outer, refresh
 
 
+# ── Detail dialog (dropdown with full information) ────────────────────────────
+
+def _open_detail_dialog(parent, ma_bn: str, on_close=None):
+    """Open a Toplevel dialog to view all patient details."""
+    import pandas as pd
+
+    df = controller.get_patient_list()
+    row = df[df["ma_bn"] == ma_bn]
+    if row.empty:
+        return
+    patient = row.iloc[0].to_dict()
+    
+    # Get current diseases for this patient
+    current_diseases = controller.get_patient_diseases(ma_bn)
+
+    dialog = ctk.CTkToplevel(parent)
+    dialog.title(f"Chi tiết bệnh nhân – {ma_bn}")
+    dialog.geometry("600x750")
+    dialog.resizable(False, False)
+    dialog.grab_set()
+    dialog.configure(fg_color=CONTENT_BG)
+
+    # Header
+    header_frame = ctk.CTkFrame(dialog, fg_color=CARD_BG, corner_radius=0)
+    header_frame.pack(fill="x")
+    
+    ctk.CTkLabel(header_frame, text=f"👤 {patient['ten']}", font=FONT_TITLE, text_color=TEXT_PRIMARY).pack(padx=PAD, pady=(PAD, PAD_SM), anchor="w")
+    ctk.CTkLabel(header_frame, text=f"Mã BN: {patient['ma_bn']}", font=FONT_BODY, text_color=TEXT_SECONDARY).pack(padx=PAD, pady=(0, PAD), anchor="w")
+
+    # Scrollable content area
+    scroll = ctk.CTkScrollableFrame(dialog, fg_color=CONTENT_BG)
+    scroll.pack(fill="both", expand=True, padx=PAD, pady=PAD)
+
+    # ── Thông tin cơ bản ────────────────────────────────────────────────────────
+    _add_section_header(scroll, "📋 Thông tin cơ bản")
+    
+    info_data = [
+        ("Tuổi", str(patient.get("tuoi", "N/A"))),
+        ("Giới tính", str(patient.get("gioi_tinh", "N/A"))),
+        ("Chiều cao (cm)", str(patient.get("chieu_cao", "N/A"))),
+        ("Cân nặng (kg)", str(patient.get("can_nang", "N/A"))),
+    ]
+    
+    for label, value in info_data:
+        _add_info_row(scroll, label, value)
+    
+    # ── Chỉ số sức khỏe ────────────────────────────────────────────────────────
+    _add_section_header(scroll, "⚕️  Chỉ số sức khỏe")
+    
+    try:
+        bmi = model.calculate_bmi(float(patient.get("can_nang", 0)), float(patient.get("chieu_cao", 0)))
+        bmi_class = model.classify_bmi(bmi)
+    except:
+        bmi = "N/A"
+        bmi_class = "N/A"
+    
+    _add_info_row(scroll, "BMI", f"{bmi} ({bmi_class})" if isinstance(bmi, float) else str(bmi))
+    _add_info_row(scroll, "Huyết áp", str(patient.get("huyet_ap", "N/A")))
+    
+    # ── Lịch sử khám ────────────────────────────────────────────────────────
+    _add_section_header(scroll, "📅 Lịch sử khám")
+    ngay_kham = str(patient.get("ngay_kham", "Chưa cập nhật"))
+    _add_info_row(scroll, "Ngày khám gần nhất", ngay_kham)
+    
+    # ── Loại bệnh ────────────────────────────────────────────────────────
+    _add_section_header(scroll, "🏥 Loại bệnh")
+    if current_diseases:
+        diseases_text = ", ".join(current_diseases)
+        ctk.CTkLabel(scroll, text=diseases_text, font=FONT_BODY, text_color=TEXT_PRIMARY, wraplength=500, justify="left").pack(anchor="w", padx=PAD, pady=(0, PAD_SM))
+    else:
+        ctk.CTkLabel(scroll, text="Chưa có bệnh nào được ghi nhận", font=FONT_BODY, text_color=TEXT_MUTED).pack(anchor="w", padx=PAD, pady=(0, PAD_SM))
+    
+    # ── Lịch sử dùng thuốc ────────────────────────────────────────────────────────
+    _add_section_header(scroll, "💊 Lịch sử dùng thuốc")
+    lich_su_thuoc = str(patient.get("lich_su_thuoc", "Chưa cập nhật"))
+    if lich_su_thuoc and lich_su_thuoc != "Chưa cập nhật":
+        ctk.CTkLabel(scroll, text=lich_su_thuoc, font=FONT_BODY, text_color=TEXT_PRIMARY, wraplength=500, justify="left").pack(anchor="w", padx=PAD, pady=(0, PAD_SM))
+    else:
+        ctk.CTkLabel(scroll, text=lich_su_thuoc, font=FONT_BODY, text_color=TEXT_MUTED).pack(anchor="w", padx=PAD, pady=(0, PAD_SM))
+    
+    # ── Ngày tạo hồ sơ ────────────────────────────────────────────────────────
+    _add_section_header(scroll, "📝 Thông tin khác")
+    _add_info_row(scroll, "Ngày tạo hồ sơ", str(patient.get("ngay_tao", "N/A")))
+    
+    # ── Action buttons ────────────────────────────────────────────────────────
+    action_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+    action_frame.pack(fill="x", padx=PAD, pady=PAD)
+    
+    def _open_edit():
+        dialog.destroy()
+        _open_edit_dialog(parent, ma_bn, on_close)
+    
+    ctk.CTkButton(
+        action_frame, text="✏️  Sửa", font=FONT_BODY, height=36, width=120,
+        fg_color=INFO, hover_color="#4F46E5", text_color="white",
+        corner_radius=RADIUS_MD, command=_open_edit
+    ).pack(side="left", padx=(0, PAD_SM))
+    
+    ctk.CTkButton(
+        action_frame, text="Đóng", font=FONT_BODY, height=36, width=120,
+        fg_color=CARD_BG, hover_color=SIDEBAR_HOVER, text_color=TEXT_SECONDARY,
+        corner_radius=RADIUS_MD, command=dialog.destroy
+    ).pack(side="left")
+
+
+def _add_section_header(parent, text):
+    """Add a section header to a scrollable frame."""
+    header = ctk.CTkFrame(parent, fg_color="transparent")
+    header.pack(fill="x", pady=(PAD, PAD_SM))
+    ctk.CTkLabel(header, text=text, font=FONT_HEADING, text_color=PRIMARY).pack(anchor="w")
+    ctk.CTkFrame(header, height=1, fg_color=CARD_BORDER).pack(fill="x", pady=(PAD_SM, 0))
+
+
+def _add_info_row(parent, label, value):
+    """Add an info row with label and value to a scrollable frame."""
+    row = ctk.CTkFrame(parent, fg_color=CARD_BG, corner_radius=RADIUS_SM)
+    row.pack(fill="x", pady=PAD_SM)
+    
+    label_widget = ctk.CTkLabel(row, text=label, font=FONT_LABEL, text_color=TEXT_SECONDARY, width=140, anchor="w")
+    label_widget.pack(side="left", padx=(PAD, PAD_SM), pady=PAD_SM)
+    
+    value_widget = ctk.CTkLabel(row, text=str(value), font=FONT_BODY, text_color=TEXT_PRIMARY, wraplength=350, justify="left", anchor="w")
+    value_widget.pack(side="left", fill="x", expand=True, padx=(0, PAD), pady=PAD_SM)
+
+
 # ── Edit dialog ──────────────────────────────────────────────────────────────
 
 def _open_edit_dialog(parent, ma_bn: str, on_saved):
@@ -595,7 +731,6 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
         "ten": "Họ và tên", "tuoi": "Tuổi",
         "gioi_tinh": "Giới tính", "chieu_cao": "Chiều cao (cm)",
         "can_nang": "Cân nặng (kg)", "huyet_ap": "Huyết áp",
-        "lich_su_kham": "Lịch sử khám",
         "lich_su_thuoc": "Lịch sử thuốc",
     }
     widgets = {}
@@ -603,7 +738,7 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
 
     for key, label in fields.items():
         ctk.CTkLabel(scroll, text=label, font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w").pack(anchor="w", pady=(6, 1))
-        if key in ("lich_su_kham", "lich_su_thuoc"):
+        if key == "lich_su_thuoc":
             tb = ctk.CTkTextbox(scroll, height=60, font=FONT_BODY, fg_color=INPUT_BG,
                                 border_color=INPUT_BORDER, text_color=TEXT_PRIMARY, corner_radius=RADIUS_SM)  # type: ignore
             tb.insert("0.0", str(patient.get(key, "")))
@@ -623,6 +758,55 @@ def _open_edit_dialog(parent, ma_bn: str, on_saved):
             e.insert(0, str(patient.get(key, "")))
             e.pack(fill="x")
             widgets[key] = e
+    
+    # ── Ngày khám (Date picker) ────────────────────────────────────────────────
+    ctk.CTkLabel(scroll, text="Ngày khám", font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w").pack(anchor="w", pady=(12, 1))
+    ngay_kham_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+    ngay_kham_frame.pack(fill="x")
+    
+    ngay_kham_var = ctk.StringVar(value=str(patient.get("ngay_kham", "")))
+    ngay_kham_entry = ctk.CTkEntry(
+        ngay_kham_frame, textvariable=ngay_kham_var,
+        font=FONT_BODY, fg_color=INPUT_BG, border_color=INPUT_BORDER,
+        text_color=TEXT_PRIMARY, height=36, corner_radius=RADIUS_SM,
+        placeholder_text="YYYY-MM-DD"
+    )
+    ngay_kham_entry.pack(side="left", fill="x", expand=True)
+    widgets["ngay_kham"] = ngay_kham_entry
+    
+    def _set_today():
+        """Set ngày khám to today."""
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        ngay_kham_var.set(today)
+    
+    def _open_date_picker():
+        """Open a simple date picker dialog."""
+        from tkinter import simpledialog
+        from datetime import datetime
+        date_str = simpledialog.askstring(
+            "Chọn ngày khám",
+            "Nhập ngày khám (YYYY-MM-DD):\nNgày hiện tại: " + datetime.now().strftime("%Y-%m-%d"),
+            parent=dialog
+        )
+        if date_str:
+            try:
+                datetime.strptime(date_str, "%Y-%m-%d")
+                ngay_kham_var.set(date_str)
+            except ValueError:
+                messagebox.showerror("Lỗi", "Định dạng ngày không đúng. Vui lòng sử dụng YYYY-MM-DD")
+    
+    ctk.CTkButton(
+        ngay_kham_frame, text="Hôm nay", font=FONT_SMALL, height=36, width=80,
+        fg_color=PRIMARY, hover_color=PRIMARY_HOVER, text_color="white",
+        corner_radius=RADIUS_SM, command=_set_today
+    ).pack(side="right", padx=(PAD_SM, 0))
+    
+    ctk.CTkButton(
+        ngay_kham_frame, text="📅", font=FONT_BODY, width=40, height=36,
+        fg_color=SECONDARY, hover_color="#4F46E5", text_color="white",
+        corner_radius=RADIUS_SM, command=_open_date_picker
+    ).pack(side="right", padx=(0, PAD_SM))
     
     # Disease checkboxes
     ctk.CTkLabel(scroll, text="Loại bệnh", font=FONT_LABEL, text_color=TEXT_SECONDARY, anchor="w").pack(anchor="w", pady=(12, 6))

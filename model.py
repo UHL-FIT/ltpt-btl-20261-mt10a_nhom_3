@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import pandas as pd
+import numpy as np
 from datetime import datetime
 from typing import Optional
 
@@ -35,7 +36,7 @@ def init_db() -> None:
         chieu_cao   REAL NOT NULL,
         can_nang    REAL NOT NULL,
         huyet_ap    TEXT NOT NULL,
-        lich_su_kham TEXT,
+        ngay_kham   TEXT,
         lich_su_thuoc TEXT,
         ngay_tao    TEXT
     );
@@ -181,7 +182,7 @@ def add_patient(data: dict, conn: sqlite3.Connection | None = None) -> tuple[boo
         sql = """
         INSERT INTO patients
             (ma_bn, ten, tuoi, gioi_tinh, chieu_cao, can_nang,
-             huyet_ap, lich_su_kham, lich_su_thuoc, ngay_tao)
+             huyet_ap, ngay_kham, lich_su_thuoc, ngay_tao)
         VALUES (?,?,?,?,?,?,?,?,?,?)
         """
         values = (
@@ -192,7 +193,7 @@ def add_patient(data: dict, conn: sqlite3.Connection | None = None) -> tuple[boo
             float(data["chieu_cao"]),
             float(data["can_nang"]),
             data.get("huyet_ap", ""),
-            data.get("lich_su_kham", ""),
+            data.get("ngay_kham", ""),
             data.get("lich_su_thuoc", ""),
             datetime.now().strftime("%Y-%m-%d %H:%M"),
         )
@@ -254,7 +255,7 @@ def update_patient(ma_bn: str, data: dict, conn: sqlite3.Connection | None = Non
         sql = """
         UPDATE patients SET
             ten=?, tuoi=?, gioi_tinh=?, chieu_cao=?, can_nang=?,
-            huyet_ap=?, lich_su_kham=?, lich_su_thuoc=?
+            huyet_ap=?, ngay_kham=?, lich_su_thuoc=?
         WHERE ma_bn=?
         """
         values = (
@@ -264,7 +265,7 @@ def update_patient(ma_bn: str, data: dict, conn: sqlite3.Connection | None = Non
             float(data["chieu_cao"]),
             float(data["can_nang"]),
             data.get("huyet_ap", ""),
-            data.get("lich_su_kham", ""),
+            data.get("ngay_kham", ""),
             data.get("lich_su_thuoc", ""),
             ma_bn,
         )
@@ -489,14 +490,28 @@ def bmi_distribution(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     df = df.copy()
-    
-    # Ép kiểu và tính toán đồng loạt bằng Vectorization (Nhanh hơn apply rất nhiều)
-    df["can_nang"] = pd.to_numeric(df["can_nang"], errors="coerce")
-    df["chieu_cao"] = pd.to_numeric(df["chieu_cao"], errors="coerce")
-    
-    df["bmi"] = (df["can_nang"] / ((df["chieu_cao"] / 100.0) ** 2)).round(2)
-    df["phan_loai_bmi"] = df["bmi"].apply(classify_bmi)
-    
+
+    # Convert to numeric arrays
+    w = pd.to_numeric(df["can_nang"], errors="coerce").to_numpy(dtype=float)
+    h = pd.to_numeric(df["chieu_cao"], errors="coerce").to_numpy(dtype=float) / 100.0
+
+    # Avoid division by zero/invalid values
+    bmi = np.full_like(w, np.nan, dtype=float)
+    valid = (h > 0) & np.isfinite(w) & np.isfinite(h)
+    bmi[valid] = np.round(w[valid] / (h[valid] ** 2), 2)
+
+    df["bmi"] = bmi
+
+    # Vectorized classification using bins
+    bins = [18.5, 25.0, 30.0]
+    labels = np.array(["Thiếu cân", "Bình thường", "Thừa cân", "Béo phì"])
+    idx = np.digitize(bmi, bins)
+    phan_loai = np.full(bmi.shape, None, dtype=object)
+    finite_mask = np.isfinite(bmi)
+    phan_loai[finite_mask] = labels[idx[finite_mask]]
+
+    df["phan_loai_bmi"] = phan_loai
+
     return df[["ma_bn", "ten", "bmi", "phan_loai_bmi"]]
 
 
